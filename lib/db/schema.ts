@@ -45,8 +45,6 @@ export const villas = pgTable("villas", {
   location: text("location"),
   pricePerNight: decimal("price_per_night", { precision: 10, scale: 2 }).notNull(),
   images: text("images").array().default([]),
-  airbnbCalendarUrl: text("airbnb_calendar_url"),
-  bookingCalendarUrl: text("booking_calendar_url"),
   amenities: text("amenities").array().default([]),
   maxGuests: integer("max_guests").default(1),
   bedrooms: integer("bedrooms").default(1),

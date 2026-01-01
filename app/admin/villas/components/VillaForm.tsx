@@ -24,8 +24,6 @@ export function VillaForm({ villa }: VillaFormProps) {
     maxGuests: villa?.maxGuests || 1,
     bedrooms: villa?.bedrooms || 1,
     bathrooms: villa?.bathrooms || 1,
-    airbnbCalendarUrl: villa?.airbnbCalendarUrl || "",
-    bookingCalendarUrl: villa?.bookingCalendarUrl || "",
     amenities: villa?.amenities?.join(", ") || "",
     isActive: villa?.isActive ?? true,
   });
@@ -90,8 +88,6 @@ export function VillaForm({ villa }: VillaFormProps) {
         maxGuests: formData.maxGuests,
         bedrooms: formData.bedrooms,
         bathrooms: formData.bathrooms,
-        airbnbCalendarUrl: formData.airbnbCalendarUrl || null,
-        bookingCalendarUrl: formData.bookingCalendarUrl || null,
         amenities: amenitiesArray,
         images,
         isActive: formData.isActive,
@@ -373,52 +369,6 @@ export function VillaForm({ villa }: VillaFormProps) {
               </>
             )}
           </label>
-        </div>
-      </div>
-
-      {/* Calendar URLs */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-          Calendar Integration
-        </h2>
-        <div className="grid grid-cols-1 gap-6">
-          <div>
-            <label
-              htmlFor="airbnbCalendarUrl"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Airbnb Calendar URL (iCal)
-            </label>
-            <input
-              type="url"
-              id="airbnbCalendarUrl"
-              value={formData.airbnbCalendarUrl}
-              onChange={(e) =>
-                setFormData({ ...formData, airbnbCalendarUrl: e.target.value })
-              }
-              placeholder="https://www.airbnb.com/calendar/ical/..."
-              className="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="bookingCalendarUrl"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Booking.com Calendar URL (iCal)
-            </label>
-            <input
-              type="url"
-              id="bookingCalendarUrl"
-              value={formData.bookingCalendarUrl}
-              onChange={(e) =>
-                setFormData({ ...formData, bookingCalendarUrl: e.target.value })
-              }
-              placeholder="https://admin.booking.com/..."
-              className="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
         </div>
       </div>
 

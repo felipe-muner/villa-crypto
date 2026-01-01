@@ -36,8 +36,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         location: body.location,
         pricePerNight: body.pricePerNight,
         images: body.images,
-        airbnbCalendarUrl: body.airbnbCalendarUrl,
-        bookingCalendarUrl: body.bookingCalendarUrl,
         amenities: body.amenities,
         maxGuests: body.maxGuests,
         bedrooms: body.bedrooms,

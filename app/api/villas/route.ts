@@ -42,8 +42,6 @@ export async function POST(request: NextRequest) {
         location: body.location || null,
         pricePerNight: body.pricePerNight,
         images: body.images || [],
-        airbnbCalendarUrl: body.airbnbCalendarUrl || null,
-        bookingCalendarUrl: body.bookingCalendarUrl || null,
         amenities: body.amenities || [],
         maxGuests: body.maxGuests || 1,
         bedrooms: body.bedrooms || 1,
