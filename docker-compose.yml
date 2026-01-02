@@ -4,7 +4,7 @@ services:
       context: .
       target: dev
     ports:
-      - "3000:3000"
+      - "${HOST_PORT:-3001}:3000"
     volumes:
       - .:/app
       - /app/node_modules
@@ -14,3 +14,26 @@ services:
     environment:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/villa_crypto
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: villa_crypto
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
