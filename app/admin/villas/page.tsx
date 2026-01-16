@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Home, ImageIcon } from "lucide-react";
+import { Plus, Home, ImageIcon, Eye } from "lucide-react";
 
 export default async function VillasPage() {
   const allVillas = await db
@@ -109,6 +109,12 @@ export default async function VillasPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <Link href={`/admin/villas/${villa.id}`}>
+                        <Button variant="ghost" size="sm">
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                      </Link>
                       <Link href={`/admin/villas/${villa.id}/edit`}>
                         <Button variant="ghost" size="sm">
                           Edit

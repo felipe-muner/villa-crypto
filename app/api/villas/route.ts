@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, villas } from "@/lib/db";
 import { desc } from "drizzle-orm";
+import { auth } from "@/lib/auth";
 
 export async function GET() {
   try {
@@ -17,6 +18,26 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+
+    // Check if user is authenticated and is either admin or host
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const isAdmin = session.user.role === "admin";
+    const isHost = session.user.isHost;
+
+    if (!isAdmin && !isHost) {
+      return NextResponse.json(
+        { error: "Only hosts and admins can create villas" },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
 
     // Validate required fields
@@ -34,6 +55,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Determine ownerEmail
+    // - Hosts: always set to their email
+    // - Admins: can optionally set ownerEmail or leave null for platform villas
+    let ownerEmail: string | null = null;
+    if (isHost && !isAdmin) {
+      ownerEmail = session.user.email;
+    } else if (isAdmin && body.ownerEmail) {
+      ownerEmail = body.ownerEmail;
+    }
+
     const [newVilla] = await db
       .insert(villas)
       .values({
@@ -47,6 +78,7 @@ export async function POST(request: NextRequest) {
         bedrooms: body.bedrooms || 1,
         bathrooms: body.bathrooms || 1,
         isActive: body.isActive ?? true,
+        ownerEmail,
       })
       .returning();
 

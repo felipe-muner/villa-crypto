@@ -15,9 +15,10 @@ import { Loader2, ImagePlus, X, AlertCircle } from "lucide-react";
 
 interface VillaFormProps {
   villa?: Villa;
+  redirectPath?: string;
 }
 
-export function VillaForm({ villa }: VillaFormProps) {
+export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -115,7 +116,7 @@ export function VillaForm({ villa }: VillaFormProps) {
         throw new Error(data.error || "Failed to save villa");
       }
 
-      router.push("/admin/villas");
+      router.push(redirectPath);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
