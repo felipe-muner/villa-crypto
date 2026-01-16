@@ -1,5 +1,8 @@
-import { drizzle } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import {
   users,
   villas,
@@ -13,8 +16,8 @@ if (!DATABASE_URL) {
   throw new Error("DATABASE_URL is not set");
 }
 
-const sql = neon(DATABASE_URL);
-const db = drizzle(sql);
+const pool = new Pool({ connectionString: DATABASE_URL });
+const db = drizzle(pool);
 
 async function seed() {
   console.log("🌱 Seeding database...\n");
@@ -62,8 +65,8 @@ async function seed() {
         name: "Oceanfront Paradise Villa",
         description:
           "Stunning beachfront villa with panoramic ocean views. Features a private infinity pool, direct beach access, and modern amenities throughout. Perfect for a luxury getaway.",
-        location: "Bali, Indonesia",
-        pricePerNight: "450.00",
+        location: "Koh Phangan, Thailand",
+        pricePerNight: "10.00",
         images: [
           "https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800",
           "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800",
@@ -86,8 +89,8 @@ async function seed() {
         name: "Mountain Retreat Chalet",
         description:
           "Cozy mountain chalet surrounded by nature. Features a fireplace, hot tub, and breathtaking mountain views. Ideal for ski trips or summer hiking adventures.",
-        location: "Swiss Alps, Switzerland",
-        pricePerNight: "380.00",
+        location: "Koh Phangan, Thailand",
+        pricePerNight: "10.00",
         images: [
           "https://images.unsplash.com/photo-1518780664697-55e3ad937233?w=800",
           "https://images.unsplash.com/photo-1449158743715-0a90ebb6d2d8?w=800",
@@ -110,8 +113,8 @@ async function seed() {
         name: "Tropical Garden Villa",
         description:
           "Beautiful villa set in lush tropical gardens. Features traditional architecture with modern comforts, a private pool, and outdoor dining area.",
-        location: "Phuket, Thailand",
-        pricePerNight: "280.00",
+        location: "Koh Phangan, Thailand",
+        pricePerNight: "10.00",
         images: [
           "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800",
           "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800",
@@ -133,23 +136,39 @@ async function seed() {
     ])
     .returning();
 
-  // Create a sample booking
-  console.log("Creating sample booking...");
-  const checkIn = new Date();
-  checkIn.setDate(checkIn.getDate() + 7); // 7 days from now
-  const checkOut = new Date(checkIn);
-  checkOut.setDate(checkOut.getDate() + 3); // 3 night stay
+  // Create sample bookings
+  console.log("Creating sample bookings...");
+
+  // Booking 1: Oceanfront Paradise Villa - Jan 20-22, 2026 (2 nights)
+  const checkIn1 = new Date("2026-01-20");
+  const checkOut1 = new Date("2026-01-22");
 
   await db.insert(bookings).values({
     villaId: villa1.id,
     userEmail: "guest@example.com",
-    checkIn,
-    checkOut,
+    checkIn: checkIn1,
+    checkOut: checkOut1,
     guests: 2,
-    totalPrice: "1350.00", // 3 nights * $450
+    totalPrice: "20.00", // 2 nights * $10
     cryptoCurrency: "usdt_eth",
-    cryptoAmount: "1350.47", // With unique identifier
-    status: "pending",
+    cryptoAmount: "20.47",
+    status: "confirmed",
+  });
+
+  // Booking 2: Mountain Retreat Chalet - Jan 18-20, 2026 (2 nights)
+  const checkIn2 = new Date("2026-01-18");
+  const checkOut2 = new Date("2026-01-20");
+
+  await db.insert(bookings).values({
+    villaId: villa2.id,
+    userEmail: "guest@example.com",
+    checkIn: checkIn2,
+    checkOut: checkOut2,
+    guests: 4,
+    totalPrice: "20.00", // 2 nights * $10
+    cryptoCurrency: "btc",
+    cryptoAmount: "0.00019",
+    status: "paid",
   });
 
   console.log("\n✅ Database seeded successfully!");
@@ -157,7 +176,7 @@ async function seed() {
   console.log("  - 2 users (1 admin, 1 guest)");
   console.log("  - 1 wallet configuration");
   console.log("  - 3 villas");
-  console.log("  - 1 sample booking");
+  console.log("  - 2 sample bookings");
   console.log("\nYou can now login with your Google account.");
   console.log(`Admin email: ${adminEmails[0]}`);
 }
@@ -168,5 +187,6 @@ seed()
     process.exit(1);
   })
   .finally(() => {
+    pool.end();
     process.exit(0);
   });
