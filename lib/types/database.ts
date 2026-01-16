@@ -4,6 +4,7 @@ import {
   villas,
   bookings,
   walletConfig,
+  hostInvitations,
 } from "@/lib/db/schema";
 
 // User types
@@ -24,6 +25,11 @@ export type CryptoCurrency = "btc" | "eth" | "usdt_eth" | "usdt_bsc";
 // Wallet config types
 export type WalletConfig = InferSelectModel<typeof walletConfig>;
 export type NewWalletConfig = InferInsertModel<typeof walletConfig>;
+
+// Host invitation types
+export type HostInvitation = InferSelectModel<typeof hostInvitations>;
+export type NewHostInvitation = InferInsertModel<typeof hostInvitations>;
+export type InvitationStatus = "pending" | "accepted" | "expired";
 
 // Extended types for API responses
 export interface VillaWithBookings extends Villa {

@@ -33,6 +33,7 @@ export const users = pgTable("users", {
   name: text("name"),
   avatar: text("avatar"),
   role: userRoleEnum("role").default("guest").notNull(),
+  isHost: boolean("is_host").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -40,6 +41,7 @@ export const users = pgTable("users", {
 // Villas table
 export const villas = pgTable("villas", {
   id: uuid("id").defaultRandom().primaryKey(),
+  ownerEmail: text("owner_email").references(() => users.email),
   name: text("name").notNull(),
   description: text("description"),
   location: text("location"),
@@ -74,6 +76,18 @@ export const bookings = pgTable("bookings", {
   adminNotes: text("admin_notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Host invitations table
+export const hostInvitations = pgTable("host_invitations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  email: text("email").notNull().unique(),
+  invitedBy: text("invited_by").references(() => users.email).notNull(),
+  token: text("token").notNull().unique(),
+  status: text("status").default("pending").notNull(), // pending, accepted, expired
+  expiresAt: timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Wallet configuration (single row table)
