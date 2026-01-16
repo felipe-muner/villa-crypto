@@ -5,6 +5,7 @@ import { redirect, notFound } from "next/navigation";
 import { format } from "date-fns";
 import Link from "next/link";
 import { PaymentSection } from "./PaymentSection";
+import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,8 @@ import {
   XCircle,
   Clock,
 } from "lucide-react";
+
+export const dynamic = "force-dynamic";
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -115,6 +118,7 @@ export default async function BookingDetailPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-background">
+      <Header />
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Back link */}
         <Link href="/bookings">

@@ -112,26 +112,23 @@ export async function scanForIncomingTransfers(
 
 /**
  * Find a matching payment for a specific amount
- * Uses exact matching with 4 decimal places precision
+ * Relies on unique amounts per booking + txHash deduplication (done in check-payment route)
  */
 export function findMatchingPayment(
   transfers: IncomingTransfer[],
   expectedAmount: number,
-  bookingCreatedAt: Date
+  _bookingCreatedAt: Date // kept for API compatibility
 ): IncomingTransfer | null {
-  // Round to 4 decimal places for comparison
-  const expectedRounded = Math.round(expectedAmount * 10000) / 10000;
+  // Amount tolerance: ±1% (tight since amounts are unique per booking)
+  const tolerance = expectedAmount * 0.01;
 
+  // Find the most recent transfer matching the amount
+  // No strict timestamp requirement - unique amounts are the key identifier
+  // txHash deduplication is handled by the caller
   for (const transfer of transfers) {
-    const transferRounded = Math.round(transfer.amount * 10000) / 10000;
-
-    // Check if amounts match (within 0.01 tolerance for floating point)
-    if (Math.abs(transferRounded - expectedRounded) < 0.01) {
-      // Check if transfer happened after booking was created
-      const bookingTimestamp = Math.floor(bookingCreatedAt.getTime() / 1000);
-      if (transfer.timestamp >= bookingTimestamp) {
-        return transfer;
-      }
+    const amountDiff = Math.abs(transfer.amount - expectedAmount);
+    if (amountDiff <= tolerance) {
+      return transfer;
     }
   }
 

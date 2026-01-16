@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, bookings, walletConfig } from "@/lib/db";
+import { db, bookings, walletConfig, villas } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { eq } from "drizzle-orm";
 import { verifyTransaction } from "@/lib/blockchain";
+import { sendPaymentReceivedEmail } from "@/lib/email";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -86,13 +87,33 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // If valid and confirmed, update booking status to "paid"
     if (result.valid && result.confirmed && booking.status === "pending") {
-      await db
+      const [updatedBooking] = await db
         .update(bookings)
         .set({
           status: "paid",
           updatedAt: new Date(),
         })
-        .where(eq(bookings.id, id));
+        .where(eq(bookings.id, id))
+        .returning();
+
+      // Get villa for email
+      const [villa] = await db
+        .select()
+        .from(villas)
+        .where(eq(villas.id, booking.villaId))
+        .limit(1);
+
+      // Send payment received email
+      if (villa && booking.userEmail && booking.txHash) {
+        sendPaymentReceivedEmail({
+          to: booking.userEmail,
+          booking: updatedBooking,
+          villa,
+          txHash: booking.txHash,
+        }).catch((error) => {
+          console.error("Failed to send payment received email:", error);
+        });
+      }
     }
 
     return NextResponse.json({

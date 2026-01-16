@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db, bookings, walletConfig } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { eq, and, ne, isNotNull } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import {
   scanForIncomingTransfers,
@@ -88,26 +88,59 @@ export async function POST(request: Request, { params }: RouteParams) {
       network === "eth" ? 500 : 1200
     );
 
+    // Get already-used txHashes to avoid double-matching
+    const usedBookings = await db
+      .select({ txHash: bookings.txHash })
+      .from(bookings)
+      .where(and(
+        isNotNull(bookings.txHash),
+        ne(bookings.id, booking.id)
+      ));
+    const usedTxHashes = new Set(usedBookings.map(b => b.txHash?.toLowerCase()));
+
+    // Filter out already-used transactions
+    const availableTransfers = transfers.filter(
+      t => !usedTxHashes.has(t.txHash.toLowerCase())
+    );
+
     // Find matching payment
     const expectedAmount = Number(booking.cryptoAmount);
-    const match = findMatchingPayment(transfers, expectedAmount, booking.createdAt);
+
+    // Check for other pending bookings with same amount (collision detection)
+    const pendingWithSameAmount = booking.cryptoAmount
+      ? await db
+          .select()
+          .from(bookings)
+          .where(and(
+            eq(bookings.cryptoCurrency, booking.cryptoCurrency),
+            eq(bookings.cryptoAmount, booking.cryptoAmount),
+            eq(bookings.status, "pending"),
+            ne(bookings.id, booking.id)
+          ))
+      : [];
+
+    const hasCollision = pendingWithSameAmount.length > 0;
+    const match = findMatchingPayment(availableTransfers, expectedAmount, new Date(booking.createdAt));
 
     if (match) {
-      // Update booking with payment info
+      // Payment detected - store it but DON'T auto-mark as paid
+      // Admin must review and confirm
       await db
         .update(bookings)
         .set({
           txHash: match.txHash,
-          status: "paid",
           updatedAt: new Date(),
+          // Status stays "pending" until admin confirms
         })
         .where(eq(bookings.id, booking.id));
 
       return NextResponse.json({
-        status: "paid",
+        status: "pending",
         txHash: match.txHash,
-        paid: true,
-        amount: match.amount,
+        paid: false,
+        paymentDetected: true,
+        detectedAmount: match.amount,
+        message: "Payment detected! Awaiting admin confirmation.",
       });
     }
 

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, bookings, villas, users, walletConfig } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { eq } from "drizzle-orm";
+import { sendPaymentReceivedEmail, sendBookingConfirmedEmail } from "@/lib/email";
+import { verifyTransaction } from "@/lib/blockchain/payment-monitor";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -30,11 +32,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
 
-    // Check authorization - admin or booking owner
+    // Check authorization - admin, booking owner (guest), or villa owner (host)
     const isAdmin = session.user.role === "admin";
-    const isOwner = result.booking.userEmail === session.user.email;
+    const isGuest = result.booking.userEmail === session.user.email;
+    const isHost = result.villa?.ownerEmail === session.user.email;
 
-    if (!isAdmin && !isOwner) {
+    if (!isAdmin && !isGuest && !isHost) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
@@ -83,19 +86,27 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
     const body = await request.json();
 
-    // Get existing booking
-    const [existing] = await db
-      .select()
+    // Get existing booking with villa info
+    const [result] = await db
+      .select({
+        booking: bookings,
+        villa: villas,
+      })
       .from(bookings)
+      .leftJoin(villas, eq(bookings.villaId, villas.id))
       .where(eq(bookings.id, id))
       .limit(1);
 
-    if (!existing) {
+    if (!result) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
 
+    const existing = result.booking;
+    const villa = result.villa;
+
     const isAdmin = session.user.role === "admin";
-    const isOwner = existing.userEmail === session.user.email;
+    const isGuest = existing.userEmail === session.user.email;
+    const isHost = villa?.ownerEmail === session.user.email;
 
     // Determine what can be updated based on role
     const updateData: Record<string, unknown> = {
@@ -103,10 +114,49 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     };
 
     // Guest can only submit txHash
-    if (isOwner && !isAdmin) {
+    if (isGuest && !isAdmin && !isHost) {
       if (body.txHash && existing.status === "pending") {
-        updateData.txHash = body.txHash;
-        updateData.status = "paid"; // Move to paid when txHash is submitted
+        // For USDT, verify the transaction on-chain before accepting
+        if (existing.cryptoCurrency === "usdt_eth" || existing.cryptoCurrency === "usdt_bsc") {
+          const [wallet] = await db.select().from(walletConfig).limit(1);
+          if (!wallet) {
+            return NextResponse.json({ error: "Wallet not configured" }, { status: 500 });
+          }
+
+          const network = existing.cryptoCurrency === "usdt_eth" ? "eth" : "bsc";
+          const walletAddress = network === "eth" ? wallet.usdtEthAddress : wallet.usdtBscAddress;
+
+          if (!walletAddress) {
+            return NextResponse.json({ error: "Wallet address not configured" }, { status: 500 });
+          }
+
+          // Verify transaction on-chain
+          const verification = await verifyTransaction(body.txHash, walletAddress, network);
+
+          if (!verification) {
+            return NextResponse.json(
+              { error: "Transaction not found or not confirmed yet. Please wait a few minutes and try again." },
+              { status: 400 }
+            );
+          }
+
+          // Check amount with 1% tolerance
+          const expectedAmount = Number(existing.cryptoAmount);
+          const tolerance = expectedAmount * 0.01;
+          if (Math.abs(verification.amount - expectedAmount) > tolerance) {
+            return NextResponse.json(
+              { error: `Amount mismatch. Expected ~${expectedAmount} USDT, received ${verification.amount} USDT` },
+              { status: 400 }
+            );
+          }
+
+          updateData.txHash = body.txHash;
+          updateData.status = "paid";
+        } else {
+          // BTC/ETH - accept txHash without on-chain verification (manual admin review)
+          updateData.txHash = body.txHash;
+          updateData.status = "paid";
+        }
       } else if (body.txHash) {
         return NextResponse.json(
           { error: "Can only submit transaction hash for pending bookings" },
@@ -115,12 +165,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Admin can update status and notes
-    if (isAdmin) {
+    // Admin or Host can update status and notes
+    if (isAdmin || isHost) {
       if (body.status) {
         // Validate status transitions
         const validTransitions: Record<string, string[]> = {
-          pending: ["cancelled"],
+          pending: ["paid", "cancelled"], // Admin/Host can mark as paid manually
           paid: ["confirmed", "cancelled"],
           confirmed: ["completed", "cancelled"],
           completed: [],
@@ -145,7 +195,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    if (!isAdmin && !isOwner) {
+    if (!isAdmin && !isGuest && !isHost) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
@@ -154,6 +204,43 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       .set(updateData)
       .where(eq(bookings.id, id))
       .returning();
+
+    // Send emails based on status changes
+    const statusChanged = updateData.status && updateData.status !== existing.status;
+
+    if (statusChanged) {
+      // Get villa for email
+      const [villa] = await db
+        .select()
+        .from(villas)
+        .where(eq(villas.id, existing.villaId))
+        .limit(1);
+
+      if (villa && existing.userEmail) {
+        // Send payment received email when status changes to "paid"
+        if (updateData.status === "paid" && updated.txHash) {
+          sendPaymentReceivedEmail({
+            to: existing.userEmail,
+            booking: updated,
+            villa,
+            txHash: updated.txHash,
+          }).catch((error) => {
+            console.error("Failed to send payment received email:", error);
+          });
+        }
+
+        // Send booking confirmed email when status changes to "confirmed"
+        if (updateData.status === "confirmed") {
+          sendBookingConfirmedEmail({
+            to: existing.userEmail,
+            booking: updated,
+            villa,
+          }).catch((error) => {
+            console.error("Failed to send booking confirmed email:", error);
+          });
+        }
+      }
+    }
 
     return NextResponse.json(updated);
   } catch (error) {
@@ -164,3 +251,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     );
   }
 }
+
+// PATCH is alias for PUT
+export { PUT as PATCH };

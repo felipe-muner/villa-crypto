@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, bookings, villas, users } from "@/lib/db";
+import { db, bookings, villas, users, walletConfig } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { eq, desc, and, or, gte, lte } from "drizzle-orm";
 import { convertUsdToCrypto, getCryptoDecimals } from "@/lib/crypto/prices";
 import { differenceInDays } from "date-fns";
-import { generateUniqueAmount } from "@/lib/blockchain/payment-monitor";
+import { sendBookingConfirmationEmail } from "@/lib/email";
+import type { CryptoCurrency } from "@/lib/types/database";
 
 export async function GET(request: NextRequest) {
   try {
@@ -128,14 +129,8 @@ export async function POST(request: NextRequest) {
     }
 
     const totalPrice = Number(villa.pricePerNight) * nights;
-    let cryptoAmount = await convertUsdToCrypto(totalPrice, cryptoCurrency);
+    const cryptoAmount = await convertUsdToCrypto(totalPrice, cryptoCurrency);
     const decimals = getCryptoDecimals(cryptoCurrency);
-
-    // For USDT payments, add unique cents to make the amount identifiable
-    // This helps with automatic payment detection
-    if (cryptoCurrency === "usdt_eth" || cryptoCurrency === "usdt_bsc") {
-      cryptoAmount = generateUniqueAmount(cryptoAmount);
-    }
 
     // Create booking
     const [newBooking] = await db
@@ -152,6 +147,38 @@ export async function POST(request: NextRequest) {
         status: "pending",
       })
       .returning();
+
+    // Get wallet address for the email
+    const [wallet] = await db.select().from(walletConfig).limit(1);
+    let walletAddress = "";
+    if (wallet) {
+      switch (cryptoCurrency as CryptoCurrency) {
+        case "btc":
+          walletAddress = wallet.btcAddress || "";
+          break;
+        case "eth":
+          walletAddress = wallet.ethAddress || "";
+          break;
+        case "usdt_eth":
+          walletAddress = wallet.usdtEthAddress || "";
+          break;
+        case "usdt_bsc":
+          walletAddress = wallet.usdtBscAddress || "";
+          break;
+      }
+    }
+
+    // Send booking confirmation email (don't fail if email fails)
+    if (walletAddress) {
+      sendBookingConfirmationEmail({
+        to: session.user.email,
+        booking: newBooking,
+        villa,
+        walletAddress,
+      }).catch((error) => {
+        console.error("Failed to send booking confirmation email:", error);
+      });
+    }
 
     return NextResponse.json(newBooking, { status: 201 });
   } catch (error) {

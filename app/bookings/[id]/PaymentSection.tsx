@@ -14,6 +14,7 @@ import {
   AlertCircle,
   RefreshCw,
   CheckCircle,
+  Clock,
 } from "lucide-react";
 
 interface PaymentSectionProps {
@@ -36,6 +37,8 @@ export function PaymentSection({
   const [error, setError] = useState("");
   const [copied, setCopied] = useState<"address" | "amount" | null>(null);
   const [paymentFound, setPaymentFound] = useState(false);
+  const [paymentDetected, setPaymentDetected] = useState(false);
+  const [detectedTxHash, setDetectedTxHash] = useState<string | null>(null);
   const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
 
   // Check if this is a USDT payment (automatic detection supported)
@@ -97,8 +100,12 @@ export function PaymentSection({
       if (data.paid && data.txHash) {
         setPaymentFound(true);
         setAutoCheckEnabled(false);
-        // Refresh the page to show updated status
         setTimeout(() => router.refresh(), 1500);
+      } else if (data.paymentDetected && data.txHash) {
+        // Payment detected but awaiting admin confirmation
+        setPaymentDetected(true);
+        setDetectedTxHash(data.txHash);
+        setAutoCheckEnabled(false);
       }
     } catch (err) {
       console.error("Error checking payment:", err);
@@ -123,9 +130,9 @@ export function PaymentSection({
     };
   }, [isUsdtPayment, autoCheckEnabled, paymentFound, checkPayment]);
 
-  // Manual submission for BTC/ETH (tx hash required)
-  const handleManualSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Manual submission for tx hash
+  const handleManualSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
 
     if (!txHash.trim()) {
       setError("Please enter a transaction hash");
@@ -145,10 +152,13 @@ export function PaymentSection({
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to submit transaction");
+        throw new Error(data.error || "Failed to verify transaction");
       }
 
-      router.refresh();
+      // Payment verified successfully
+      setPaymentFound(true);
+      setAutoCheckEnabled(false);
+      setTimeout(() => router.refresh(), 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -181,16 +191,41 @@ export function PaymentSection({
     return (
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle className="text-lg">Payment Detected</CardTitle>
+          <CardTitle className="text-lg">Payment Confirmed</CardTitle>
         </CardHeader>
         <CardContent>
           <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
             <CheckCircle className="h-4 w-4 text-green-500" />
             <AlertDescription className="text-green-800 dark:text-green-300">
-              Your payment has been detected and is being processed. The page
-              will refresh shortly.
+              Your payment has been confirmed. The page will refresh shortly.
             </AlertDescription>
           </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (paymentDetected) {
+    return (
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-lg">Payment Detected</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950">
+            <Clock className="h-4 w-4 text-blue-500" />
+            <AlertDescription className="text-blue-800 dark:text-blue-300">
+              Your payment has been detected and is awaiting admin confirmation.
+              You will receive an email once confirmed.
+            </AlertDescription>
+          </Alert>
+
+          {detectedTxHash && (
+            <div className="bg-muted rounded-lg p-4">
+              <p className="text-sm text-muted-foreground mb-1">Transaction Hash</p>
+              <p className="font-mono text-sm break-all">{detectedTxHash}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     );
@@ -295,6 +330,40 @@ export function PaymentSection({
                 )}
                 Check Now
               </Button>
+            </div>
+
+            {/* Manual tx hash submission as fallback */}
+            <div className="border-t pt-4">
+              <p className="text-sm text-muted-foreground mb-3">
+                Payment not detected? Enter your transaction hash manually:
+              </p>
+              {error && (
+                <Alert variant="destructive" className="mb-3">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              <div className="flex gap-3">
+                <Input
+                  value={txHash}
+                  onChange={(e) => setTxHash(e.target.value)}
+                  placeholder="0x..."
+                  className="font-mono"
+                />
+                <Button
+                  onClick={handleManualSubmit}
+                  disabled={loading || !txHash.trim()}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Verifying
+                    </>
+                  ) : (
+                    "Verify"
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         )}

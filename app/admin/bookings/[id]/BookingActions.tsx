@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -47,6 +49,8 @@ export function BookingActions({
   const [notes, setNotes] = useState(initialNotes);
   const [showConfirmDialog, setShowConfirmDialog] = useState<string | null>(null);
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
+  const [manualTxHash, setManualTxHash] = useState("");
+  const [assigningPayment, setAssigningPayment] = useState(false);
 
   const updateBooking = async (data: Record<string, unknown>) => {
     setLoading(true);
@@ -86,6 +90,37 @@ export function BookingActions({
 
   const saveNotes = () => {
     updateBooking({ adminNotes: notes });
+  };
+
+  const assignPaymentManually = async () => {
+    if (!manualTxHash.trim()) {
+      setError("Please enter a transaction hash");
+      return;
+    }
+
+    setAssigningPayment(true);
+    setError("");
+
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ txHash: manualTxHash.trim(), status: "paid" }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.error || "Failed to assign payment");
+      }
+
+      setManualTxHash("");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setAssigningPayment(false);
+    }
   };
 
   const verifyBlockchainTx = async () => {
@@ -194,6 +229,80 @@ export function BookingActions({
         </CardContent>
       </Card>
 
+      {/* Payment Detected - Confirm Payment */}
+      {hasTxHash && currentStatus === "pending" && (
+        <Card className="border-green-500 bg-green-50 dark:bg-green-950">
+          <CardHeader>
+            <CardTitle className="text-lg text-green-700 dark:text-green-300">
+              💰 Payment Detected
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-green-700 dark:text-green-300 mb-4">
+              A matching payment has been detected on the blockchain.
+              Review the transaction details and confirm to mark as paid.
+            </p>
+            <Button
+              onClick={() => handleStatusChange("paid")}
+              disabled={loading}
+              className="w-full bg-green-600 hover:bg-green-700"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Confirming...
+                </>
+              ) : (
+                <>
+                  <Check className="mr-2 h-4 w-4" />
+                  Confirm Payment
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Manual Payment Assignment - for pending bookings without txHash */}
+      {!hasTxHash && currentStatus === "pending" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Manual Payment Assignment</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              If auto-detection failed, you can manually enter the transaction hash.
+            </p>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="txHash">Transaction Hash</Label>
+                <Input
+                  id="txHash"
+                  value={manualTxHash}
+                  onChange={(e) => setManualTxHash(e.target.value)}
+                  placeholder="0x..."
+                  className="font-mono text-sm"
+                />
+              </div>
+              <Button
+                onClick={assignPaymentManually}
+                disabled={assigningPayment || !manualTxHash.trim()}
+                className="w-full"
+              >
+                {assigningPayment ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Assigning...
+                  </>
+                ) : (
+                  "Assign Transaction"
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Verification Card */}
       {hasTxHash && (currentStatus === "pending" || currentStatus === "paid") && (
         <Card>
@@ -218,21 +327,21 @@ export function BookingActions({
             </Button>
 
             {verificationResult && (
-              <Alert
-                className={`mt-4 ${
+              <div
+                className={`mt-4 rounded-lg border-2 p-4 ${
                   verificationResult.valid
                     ? "border-green-500 bg-green-50 dark:bg-green-950"
                     : "border-red-500 bg-red-50 dark:bg-red-950"
                 }`}
               >
-                <div className="flex items-center mb-2">
+                <div className="flex items-center gap-2 mb-3">
                   {verificationResult.valid ? (
-                    <Check className="h-5 w-5 text-green-500 mr-2" />
+                    <Check className="h-6 w-6 text-green-500" />
                   ) : (
-                    <X className="h-5 w-5 text-red-500 mr-2" />
+                    <X className="h-6 w-6 text-red-500" />
                   )}
                   <span
-                    className={`font-medium ${
+                    className={`font-semibold text-lg ${
                       verificationResult.valid
                         ? "text-green-700 dark:text-green-300"
                         : "text-red-700 dark:text-red-300"
@@ -241,21 +350,28 @@ export function BookingActions({
                     {verificationResult.valid ? "Valid Transaction" : "Invalid Transaction"}
                   </span>
                 </div>
-                <AlertDescription className="space-y-1">
-                  <p className="text-muted-foreground">
-                    Confirmed: {verificationResult.confirmed ? "Yes" : "No"}
-                  </p>
-                  <p className="text-muted-foreground">
-                    Confirmations: {verificationResult.confirmations}
-                  </p>
-                  <p className="text-muted-foreground">
-                    Amount received: {verificationResult.amountReceived}
-                  </p>
-                  {verificationResult.error && (
-                    <p className="text-destructive mt-2">{verificationResult.error}</p>
-                  )}
-                </AlertDescription>
-              </Alert>
+
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center py-1 border-b border-green-200 dark:border-green-800">
+                    <span className="text-muted-foreground">Status</span>
+                    <span className={`font-medium ${verificationResult.confirmed ? "text-green-600" : "text-yellow-600"}`}>
+                      {verificationResult.confirmed ? "✓ Confirmed" : "⏳ Pending"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-green-200 dark:border-green-800">
+                    <span className="text-muted-foreground">Confirmations</span>
+                    <span className="font-mono font-medium">{verificationResult.confirmations}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-muted-foreground">Amount Received</span>
+                    <span className="font-mono font-bold text-base">{verificationResult.amountReceived} USDT</span>
+                  </div>
+                </div>
+
+                {verificationResult.error && (
+                  <p className="text-red-600 mt-3 text-sm">{verificationResult.error}</p>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>
