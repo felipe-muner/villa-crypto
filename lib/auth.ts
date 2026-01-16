@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { db, users } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { db, users, hostInvitations } from "@/lib/db";
+import { eq, and } from "drizzle-orm";
 import type { UserRole } from "@/lib/types/database";
 
 // Get admin emails from environment variable
@@ -25,6 +25,32 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const adminEmails = getAdminEmails();
       const role: UserRole = adminEmails.includes(email) ? "admin" : "guest";
 
+      // Check for pending invitation
+      const [pendingInvite] = await db
+        .select()
+        .from(hostInvitations)
+        .where(
+          and(
+            eq(hostInvitations.email, email),
+            eq(hostInvitations.status, "pending")
+          )
+        )
+        .limit(1);
+
+      // Check if user already has an accepted invitation
+      const [acceptedInvite] = await db
+        .select()
+        .from(hostInvitations)
+        .where(
+          and(
+            eq(hostInvitations.email, email),
+            eq(hostInvitations.status, "accepted")
+          )
+        )
+        .limit(1);
+
+      const shouldBeHost = !!pendingInvite || !!acceptedInvite;
+
       // Upsert user in database
       const existingUser = await db
         .select()
@@ -38,6 +64,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           name: user.name || null,
           avatar: user.image || null,
           role,
+          isHost: shouldBeHost,
         });
       } else {
         await db
@@ -45,6 +72,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           .set({
             name: user.name || existingUser[0].name,
             avatar: user.image || existingUser[0].avatar,
+            isHost: existingUser[0].isHost || shouldBeHost,
             updatedAt: new Date(),
           })
           .where(eq(users.email, email));
@@ -52,19 +80,39 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       return true;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user?.email) {
         const email = user.email.toLowerCase();
         const adminEmails = getAdminEmails();
         token.role = adminEmails.includes(email) ? "admin" : "guest";
         token.email = email;
+
+        // Fetch isHost from database
+        const [dbUser] = await db
+          .select()
+          .from(users)
+          .where(eq(users.email, email))
+          .limit(1);
+        token.isHost = dbUser?.isHost || false;
       }
+
+      // Refresh isHost on session update
+      if (trigger === "update" && token.email) {
+        const [dbUser] = await db
+          .select()
+          .from(users)
+          .where(eq(users.email, token.email as string))
+          .limit(1);
+        token.isHost = dbUser?.isHost || false;
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.role = token.role as UserRole;
         session.user.email = token.email as string;
+        session.user.isHost = token.isHost as boolean;
       }
       return session;
     },
@@ -78,6 +126,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 declare module "next-auth" {
   interface User {
     role?: UserRole;
+    isHost?: boolean;
   }
   interface Session {
     user: {
@@ -85,6 +134,7 @@ declare module "next-auth" {
       name?: string | null;
       image?: string | null;
       role: UserRole;
+      isHost: boolean;
     };
   }
 }
@@ -93,5 +143,6 @@ declare module "@auth/core/jwt" {
   interface JWT {
     role?: UserRole;
     email?: string;
+    isHost?: boolean;
   }
 }
