@@ -13,8 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Calendar, AlertCircle, FileText, CreditCard, CheckCircle, Home, XCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Calendar, AlertCircle } from "lucide-react";
+import { BookingProgressIndicator } from "@/components/BookingProgressIndicator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default async function BookingsPage() {
@@ -61,42 +61,16 @@ export default async function BookingsPage() {
     }
   };
 
-  // Status progression: booked → paid → confirmed → completed
-  const getStatusProgress = (status: string, hasTxHash: boolean) => {
-    const stages = [
-      { key: "booked", label: "Booked", icon: FileText },
-      { key: "paid", label: "Paid", icon: CreditCard },
-      { key: "confirmed", label: "Confirmed", icon: CheckCircle },
-      { key: "completed", label: "Completed", icon: Home },
-    ];
-
-    // Determine which stages are complete
-    let completedStages: string[] = [];
-
-    if (status === "cancelled") {
-      return { stages, completedStages: ["booked"], cancelled: true };
-    }
-
-    switch (status) {
-      case "pending":
-        completedStages = ["booked"];
-        // If txHash exists, payment detected but not confirmed yet
-        if (hasTxHash) {
-          completedStages = ["booked"]; // Still waiting for admin to confirm payment
-        }
-        break;
-      case "paid":
-        completedStages = ["booked", "paid"];
-        break;
-      case "confirmed":
-        completedStages = ["booked", "paid", "confirmed"];
-        break;
-      case "completed":
-        completedStages = ["booked", "paid", "confirmed", "completed"];
-        break;
-    }
-
-    return { stages, completedStages, cancelled: false, needsPaymentConfirm: status === "pending" && hasTxHash };
+  // Get step number from status
+  const getStatusStep = (status: string): number => {
+    const steps: Record<string, number> = {
+      pending: 1,
+      paid: 2,
+      confirmed: 3,
+      completed: 4,
+      cancelled: 0,
+    };
+    return steps[status] || 0;
   };
 
   // Count bookings needing payment confirmation
@@ -174,57 +148,12 @@ export default async function BookingsPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    {booking.status === "cancelled" ? (
-                      <div className="flex items-center gap-1 text-red-500">
-                        <XCircle className="h-4 w-4" />
-                        <span className="text-xs">Cancelled</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1">
-                        {(() => {
-                          const { stages, completedStages, needsPaymentConfirm } = getStatusProgress(
-                            booking.status,
-                            !!booking.txHash
-                          );
-                          return stages.map((stage, index) => {
-                            const Icon = stage.icon;
-                            const isComplete = completedStages.includes(stage.key);
-                            const isPendingPayment = needsPaymentConfirm && stage.key === "paid";
-
-                            return (
-                              <div
-                                key={stage.key}
-                                className="flex items-center"
-                                title={stage.label}
-                              >
-                                <div
-                                  className={cn(
-                                    "p-1 rounded-full",
-                                    isPendingPayment
-                                      ? "bg-orange-100 text-orange-500"
-                                      : isComplete
-                                      ? "bg-green-100 text-green-600"
-                                      : "bg-gray-100 text-gray-400"
-                                  )}
-                                >
-                                  <Icon className="h-3.5 w-3.5" />
-                                </div>
-                                {index < stages.length - 1 && (
-                                  <div
-                                    className={cn(
-                                      "w-2 h-0.5",
-                                      isComplete && completedStages.includes(stages[index + 1]?.key)
-                                        ? "bg-green-400"
-                                        : "bg-gray-200"
-                                    )}
-                                  />
-                                )}
-                              </div>
-                            );
-                          });
-                        })()}
-                      </div>
-                    )}
+                    <BookingProgressIndicator
+                      step={getStatusStep(booking.status)}
+                      size="sm"
+                      paymentDetected={booking.status === "pending" && !!booking.txHash}
+                      cancelled={booking.status === "cancelled"}
+                    />
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     <div>

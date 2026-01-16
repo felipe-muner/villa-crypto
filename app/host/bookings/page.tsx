@@ -14,8 +14,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Calendar, FileText, CreditCard, CheckCircle, Home } from "lucide-react";
+import { Calendar, Home } from "lucide-react";
 import { BookingActionButton } from "./BookingActionButton";
+import { BookingProgressIndicator } from "@/components/BookingProgressIndicator";
 
 const statusConfig: Record<
   string,
@@ -173,7 +174,7 @@ export default async function HostBookingsPage({
                 {hostBookings.map(({ booking, villa, guest }) => {
                   const status = statusConfig[booking.status] || statusConfig.pending;
                   const step = getStatusStep(booking.status);
-                  const hasPaymentDetected = booking.status === "pending" && booking.txHash;
+                  const hasPaymentDetected = booking.status === "pending" && !!booking.txHash;
 
                   return (
                     <TableRow key={booking.id}>
@@ -215,39 +216,12 @@ export default async function HostBookingsPage({
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
-                          <FileText
-                            className={`h-4 w-4 ${
-                              step >= 1
-                                ? "text-blue-500"
-                                : "text-muted-foreground"
-                            }`}
-                          />
-                          <div className="w-4 h-0.5 bg-muted" />
-                          <CreditCard
-                            className={`h-4 w-4 ${
-                              step >= 2
-                                ? "text-green-500"
-                                : "text-muted-foreground"
-                            }`}
-                          />
-                          <div className="w-4 h-0.5 bg-muted" />
-                          <CheckCircle
-                            className={`h-4 w-4 ${
-                              step >= 3
-                                ? "text-purple-500"
-                                : "text-muted-foreground"
-                            }`}
-                          />
-                          <div className="w-4 h-0.5 bg-muted" />
-                          <Home
-                            className={`h-4 w-4 ${
-                              step >= 4
-                                ? "text-indigo-500"
-                                : "text-muted-foreground"
-                            }`}
-                          />
-                        </div>
+                        <BookingProgressIndicator
+                          step={step}
+                          size="sm"
+                          paymentDetected={hasPaymentDetected}
+                          cancelled={booking.status === "cancelled"}
+                        />
                       </TableCell>
                       <TableCell>
                         <div>
