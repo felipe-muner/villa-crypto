@@ -10,10 +10,12 @@ import {
   LayoutDashboard,
   Home,
   Calendar,
+  CalendarDays,
   Settings,
   LogOut,
   Menu,
   X,
+  Users,
 } from "lucide-react";
 
 interface AdminSidebarProps {
@@ -31,6 +33,11 @@ const navigation = [
     icon: LayoutDashboard,
   },
   {
+    name: "Calendar",
+    href: "/admin/calendar",
+    icon: CalendarDays,
+  },
+  {
     name: "Villas",
     href: "/admin/villas",
     icon: Home,
@@ -39,6 +46,11 @@ const navigation = [
     name: "Bookings",
     href: "/admin/bookings",
     icon: Calendar,
+  },
+  {
+    name: "Hosts",
+    href: "/admin/hosts",
+    icon: Users,
   },
   {
     name: "Settings",
