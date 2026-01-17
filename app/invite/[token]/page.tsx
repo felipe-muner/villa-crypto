@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useCallback } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Home, CheckCircle, XCircle } from "lucide-react";
+import { trpc } from "@/lib/trpc/client";
 
 export default function InvitePage({
   params,
@@ -16,35 +17,40 @@ export default function InvitePage({
   const { token } = use(params);
   const router = useRouter();
   const { data: session, status } = useSession();
-  const [invitation, setInvitation] = useState<{
-    email: string;
-    status: string;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Fetch invitation details
-  useEffect(() => {
-    async function fetchInvitation() {
-      try {
-        const res = await fetch(`/api/invitations/${token}`);
-        if (!res.ok) {
-          const data = await res.json();
-          setError(data.error || "Invalid invitation");
-          return;
-        }
-        const data = await res.json();
-        setInvitation(data);
-      } catch {
-        setError("Failed to load invitation");
-      } finally {
-        setLoading(false);
-      }
+  const { data: invitation, isLoading: loading, error: queryError } = trpc.invitation.getByToken.useQuery(
+    { token },
+    {
+      retry: false,
+      refetchOnWindowFocus: false,
     }
-    fetchInvitation();
-  }, [token]);
+  );
+
+  const acceptMutation = trpc.invitation.accept.useMutation({
+    onSuccess: () => {
+      setSuccess(true);
+      setTimeout(() => {
+        router.push("/host");
+      }, 2000);
+    },
+    onError: (err) => {
+      setError(err.message || "Failed to accept invitation");
+    },
+  });
+
+  // Set error from query
+  useEffect(() => {
+    if (queryError) {
+      setError(queryError.message || "Invalid invitation");
+    }
+  }, [queryError]);
+
+  const acceptInvitation = useCallback(() => {
+    setError(null);
+    acceptMutation.mutate({ token });
+  }, [acceptMutation, token]);
 
   // Auto-accept if logged in with matching email
   useEffect(() => {
@@ -52,41 +58,19 @@ export default function InvitePage({
       session?.user?.email &&
       invitation?.email &&
       session.user.email.toLowerCase() === invitation.email.toLowerCase() &&
-      invitation.status === "pending"
+      invitation.status === "pending" &&
+      !acceptMutation.isPending &&
+      !success
     ) {
       acceptInvitation();
     }
-  }, [session, invitation]);
-
-  const acceptInvitation = async () => {
-    setAccepting(true);
-    setError(null);
-
-    try {
-      const res = await fetch(`/api/invitations/${token}/accept`, {
-        method: "POST",
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || "Failed to accept invitation");
-        return;
-      }
-
-      setSuccess(true);
-      setTimeout(() => {
-        router.push("/host");
-      }, 2000);
-    } catch {
-      setError("Failed to accept invitation");
-    } finally {
-      setAccepting(false);
-    }
-  };
+  }, [session, invitation, acceptInvitation, acceptMutation.isPending, success]);
 
   const handleSignIn = () => {
     signIn("google", { callbackUrl: `/invite/${token}` });
   };
+
+  const accepting = acceptMutation.isPending;
 
   if (loading) {
     return (

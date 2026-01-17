@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle, Eye } from "lucide-react";
+import { trpc } from "@/lib/trpc/client";
 
 interface BookingActionButtonProps {
   bookingId: string;
@@ -17,26 +17,24 @@ export function BookingActionButton({
   hasTxHash,
 }: BookingActionButtonProps) {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
 
-  const handleAction = async (newStatus: string) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/bookings/${bookingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      if (res.ok) {
-        router.refresh();
-      }
-    } catch (error) {
+  const updateBookingMutation = trpc.booking.update.useMutation({
+    onSuccess: () => {
+      router.refresh();
+    },
+    onError: (error) => {
       console.error("Action failed:", error);
-    } finally {
-      setLoading(false);
-    }
+    },
+  });
+
+  const handleAction = (newStatus: string) => {
+    updateBookingMutation.mutate({
+      id: bookingId,
+      data: { status: newStatus as "pending" | "paid" | "confirmed" | "cancelled" | "completed" },
+    });
   };
+
+  const loading = updateBookingMutation.isPending;
 
   // Payment detected - show Confirm Payment button
   if (status === "pending" && hasTxHash) {

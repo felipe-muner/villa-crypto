@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, ImagePlus, X } from "lucide-react";
 import { showToast } from "@/lib/toast";
+import { trpc } from "@/lib/trpc/client";
 
 interface VillaFormProps {
   villa?: Villa;
@@ -21,7 +22,6 @@ interface VillaFormProps {
 export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -37,6 +37,30 @@ export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormPr
   });
 
   const [images, setImages] = useState<string[]>(villa?.images || []);
+
+  const createVilla = trpc.villa.create.useMutation({
+    onSuccess: () => {
+      showToast.success("Success", "Villa created successfully");
+      router.push(redirectPath);
+      router.refresh();
+    },
+    onError: (error) => {
+      showToast.error(error.message);
+    },
+  });
+
+  const updateVilla = trpc.villa.update.useMutation({
+    onSuccess: () => {
+      showToast.success("Success", "Villa updated successfully");
+      router.push(redirectPath);
+      router.refresh();
+    },
+    onError: (error) => {
+      showToast.error(error.message);
+    },
+  });
+
+  const isSubmitting = createVilla.isPending || updateVilla.isPending;
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -79,48 +103,29 @@ export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormPr
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
-    try {
-      const amenitiesArray = formData.amenities
-        .split(",")
-        .map((a) => a.trim())
-        .filter((a) => a.length > 0);
+    const amenitiesArray = formData.amenities
+      .split(",")
+      .map((a) => a.trim())
+      .filter((a) => a.length > 0);
 
-      const payload = {
-        name: formData.name,
-        description: formData.description || null,
-        location: formData.location || null,
-        pricePerNight: formData.pricePerNight,
-        maxGuests: formData.maxGuests,
-        bedrooms: formData.bedrooms,
-        bathrooms: formData.bathrooms,
-        amenities: amenitiesArray,
-        images,
-        isActive: formData.isActive,
-      };
+    const payload = {
+      name: formData.name,
+      description: formData.description || null,
+      location: formData.location || null,
+      pricePerNight: formData.pricePerNight,
+      maxGuests: formData.maxGuests,
+      bedrooms: formData.bedrooms,
+      bathrooms: formData.bathrooms,
+      amenities: amenitiesArray,
+      images,
+      isActive: formData.isActive,
+    };
 
-      const url = villa ? `/api/villas/${villa.id}` : "/api/villas";
-      const method = villa ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to save villa");
-      }
-
-      showToast.success("Success", villa ? "Villa updated successfully" : "Villa created successfully");
-      router.push(redirectPath);
-      router.refresh();
-    } catch (err) {
-      showToast.error(err);
-    } finally {
-      setIsSubmitting(false);
+    if (villa) {
+      updateVilla.mutate({ id: villa.id, data: payload });
+    } else {
+      createVilla.mutate(payload);
     }
   };
 

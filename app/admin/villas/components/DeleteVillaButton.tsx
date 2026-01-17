@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Loader2 } from "lucide-react";
 import { showToast } from "@/lib/toast";
+import { trpc } from "@/lib/trpc/client";
 
 interface DeleteVillaButtonProps {
   villaId: string;
@@ -23,30 +24,22 @@ interface DeleteVillaButtonProps {
 }
 
 export function DeleteVillaButton({ villaId, villaName }: DeleteVillaButtonProps) {
-  const [isDeleting, setIsDeleting] = useState(false);
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
-  const handleDelete = async () => {
-    setIsDeleting(true);
-    try {
-      const response = await fetch(`/api/villas/${villaId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to delete villa");
-      }
-
+  const deleteVilla = trpc.villa.delete.useMutation({
+    onSuccess: () => {
       showToast.deleted("Villa");
       setOpen(false);
       router.refresh();
-    } catch (error) {
-      showToast.error(error);
-    } finally {
-      setIsDeleting(false);
-    }
+    },
+    onError: (error) => {
+      showToast.error(error.message);
+    },
+  });
+
+  const handleDelete = () => {
+    deleteVilla.mutate({ id: villaId });
   };
 
   return (
@@ -64,13 +57,13 @@ export function DeleteVillaButton({ villaId, villaName }: DeleteVillaButtonProps
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={deleteVilla.isPending}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
-            disabled={isDeleting}
+            disabled={deleteVilla.isPending}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            {isDeleting ? (
+            {deleteVilla.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Deleting...

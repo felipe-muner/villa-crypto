@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { trpc } from "@/lib/trpc/client";
 
 interface VillaInfo {
   id: string;
@@ -33,34 +34,22 @@ interface CalendarData {
 export default function AdminCalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [data, setData] = useState<CalendarData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  const monthParam = format(currentMonth, "yyyy-MM");
+  const { data: calendarData, isLoading: loading, error: queryError } = trpc.admin.calendar.useQuery(
+    { month: monthParam },
+    {
+      refetchOnWindowFocus: false,
+    }
+  );
 
   useEffect(() => {
-    async function fetchCalendar() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const monthParam = format(currentMonth, "yyyy-MM");
-        const response = await fetch(`/api/admin/calendar?month=${monthParam}`);
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch calendar");
-        }
-
-        const result = await response.json();
-        setData(result);
-      } catch (err) {
-        setError("Failed to load calendar");
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+    if (calendarData) {
+      setData(calendarData);
     }
+  }, [calendarData]);
 
-    fetchCalendar();
-  }, [currentMonth]);
+  const error = queryError ? "Failed to load calendar" : null;
 
   const goToPreviousMonth = () => setCurrentMonth((prev) => subMonths(prev, 1));
   const goToNextMonth = () => setCurrentMonth((prev) => addMonths(prev, 1));

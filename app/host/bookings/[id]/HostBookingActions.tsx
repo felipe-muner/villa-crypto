@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { showToast } from "@/lib/toast";
+import { trpc } from "@/lib/trpc/client";
 
 interface VerificationResult {
   valid: boolean;
@@ -55,71 +56,36 @@ export function HostBookingActions({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [manualTxHash, setManualTxHash] = useState("");
-  const [assigningPayment, setAssigningPayment] = useState(false);
   const [notes, setNotes] = useState(initialNotes || "");
-  const [savingNotes, setSavingNotes] = useState(false);
 
-  const updateBooking = async (data: Record<string, unknown>, successMessage?: string) => {
-    setLoading(true);
-
-    try {
-      const res = await fetch(`/api/bookings/${bookingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-
-      if (!res.ok) {
-        const result = await res.json();
-        throw new Error(result.error || "Failed to update booking");
-      }
-
-      if (successMessage) {
-        showToast.success("Success", successMessage);
-      }
-      router.refresh();
-      setShowConfirmDialog(null);
-    } catch (err) {
-      showToast.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleStatusChange = (newStatus: string) => {
-    setShowConfirmDialog(newStatus);
-  };
-
-  const confirmStatusChange = () => {
-    if (showConfirmDialog) {
+  const updateBookingMutation = trpc.booking.update.useMutation({
+    onSuccess: (_, variables) => {
       const messages: Record<string, string> = {
         paid: "Payment confirmed",
         confirmed: "Booking confirmed",
         completed: "Booking marked as completed",
         cancelled: "Booking cancelled",
       };
-      updateBooking({ status: showConfirmDialog }, messages[showConfirmDialog]);
-    }
-  };
-
-  const verifyBlockchainTx = async () => {
-    setVerifying(true);
-    setVerificationResult(null);
-
-    try {
-      const res = await fetch(`/api/bookings/${bookingId}/verify`, {
-        method: "POST",
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to verify transaction");
+      if (variables.data.status) {
+        showToast.success("Success", messages[variables.data.status] || "Booking updated");
+      } else if (variables.data.adminNotes !== undefined) {
+        showToast.saved("Notes");
+      } else if (variables.data.txHash) {
+        showToast.success("Success", "Payment assigned successfully");
       }
+      router.refresh();
+      setShowConfirmDialog(null);
+      setManualTxHash("");
+    },
+    onError: (err) => {
+      showToast.error(err.message);
+    },
+  });
 
+  const verifyMutation = trpc.booking.verify.useMutation({
+    onSuccess: (data) => {
       setVerificationResult(data.verification);
       if (data.verification.valid) {
         showToast.success("Verified", "Transaction verified successfully");
@@ -127,66 +93,52 @@ export function HostBookingActions({
       if (data.bookingStatus !== status) {
         router.refresh();
       }
-    } catch (err) {
-      showToast.error(err);
-    } finally {
-      setVerifying(false);
+    },
+    onError: (err) => {
+      showToast.error(err.message);
+    },
+  });
+
+  const handleStatusChange = (newStatus: string) => {
+    setShowConfirmDialog(newStatus);
+  };
+
+  const confirmStatusChange = () => {
+    if (showConfirmDialog) {
+      setLoading(true);
+      updateBookingMutation.mutate(
+        { id: bookingId, data: { status: showConfirmDialog as "pending" | "paid" | "confirmed" | "cancelled" | "completed" } },
+        { onSettled: () => setLoading(false) }
+      );
     }
   };
 
-  const assignPaymentManually = async () => {
+  const verifyBlockchainTx = () => {
+    verifyMutation.mutate({ id: bookingId });
+  };
+
+  const assignPaymentManually = () => {
     if (!manualTxHash.trim()) {
       showToast.error("Please enter a transaction hash");
       return;
     }
 
-    setAssigningPayment(true);
-
-    try {
-      const res = await fetch(`/api/bookings/${bookingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ txHash: manualTxHash.trim(), status: "paid" }),
-      });
-
-      if (!res.ok) {
-        const result = await res.json();
-        throw new Error(result.error || "Failed to assign payment");
-      }
-
-      showToast.success("Success", "Payment assigned successfully");
-      setManualTxHash("");
-      router.refresh();
-    } catch (err) {
-      showToast.error(err);
-    } finally {
-      setAssigningPayment(false);
-    }
+    updateBookingMutation.mutate({
+      id: bookingId,
+      data: {
+        txHash: manualTxHash.trim(),
+        status: "paid",
+      },
+    });
   };
 
-  const saveNotes = async () => {
-    setSavingNotes(true);
-
-    try {
-      const res = await fetch(`/api/bookings/${bookingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminNotes: notes }),
-      });
-
-      if (!res.ok) {
-        const result = await res.json();
-        throw new Error(result.error || "Failed to save notes");
-      }
-
-      showToast.saved("Notes");
-      router.refresh();
-    } catch (err) {
-      showToast.error(err);
-    } finally {
-      setSavingNotes(false);
-    }
+  const saveNotes = () => {
+    updateBookingMutation.mutate({ id: bookingId, data: { adminNotes: notes } });
   };
+
+  const verifying = verifyMutation.isPending;
+  const assigningPayment = updateBookingMutation.isPending && !!manualTxHash;
+  const savingNotes = updateBookingMutation.isPending && !manualTxHash;
 
   return (
     <div className="space-y-4">

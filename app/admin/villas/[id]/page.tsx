@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -34,12 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
-import type { Villa, Booking, User } from "@/lib/types/database";
-
-interface BookingWithUser {
-  booking: Booking;
-  user: User | null;
-}
+import { trpc } from "@/lib/trpc/client";
 
 export default function VillaDetailPage({
   params,
@@ -48,38 +43,13 @@ export default function VillaDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
-  const [villa, setVilla] = useState<Villa | null>(null);
-  const [bookings, setBookings] = useState<BookingWithUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        // Fetch villa
-        const villaRes = await fetch(`/api/villas/${id}`);
-        if (!villaRes.ok) {
-          throw new Error("Villa not found");
-        }
-        const villaData = await villaRes.json();
-        setVilla(villaData);
+  const { data: villa, isLoading: villaLoading, error: villaError } = trpc.villa.getById.useQuery({ id });
+  const { data: bookingsData } = trpc.booking.list.useQuery({ villaId: id });
 
-        // Fetch bookings for this villa
-        const bookingsRes = await fetch(`/api/bookings?villaId=${id}`);
-        if (bookingsRes.ok) {
-          const bookingsData = await bookingsRes.json();
-          setBookings(bookingsData);
-        }
-      } catch (err) {
-        setError("Failed to load villa");
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchData();
-  }, [id]);
+  const bookings = bookingsData || [];
+  const loading = villaLoading;
+  const error = villaError ? "Failed to load villa" : null;
 
   const getStatusColor = (status: string) => {
     switch (status) {

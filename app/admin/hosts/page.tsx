@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,75 +34,37 @@ import {
   Send,
 } from "lucide-react";
 import { showToast } from "@/lib/toast";
-
-interface HostInvitation {
-  id: string;
-  email: string;
-  invitedBy: string;
-  status: string;
-  expiresAt: string;
-  acceptedAt: string | null;
-  createdAt: string;
-}
+import { trpc } from "@/lib/trpc/client";
 
 export default function HostsPage() {
-  const [invitations, setInvitations] = useState<HostInvitation[]>([]);
-  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [sending, setSending] = useState(false);
 
-  const fetchInvitations = async () => {
-    try {
-      const res = await fetch("/api/admin/invitations");
-      if (res.ok) {
-        const data = await res.json();
-        setInvitations(data);
-      }
-    } catch (err) {
-      showToast.error("Failed to fetch invitations");
-      console.error("Failed to fetch invitations:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const utils = trpc.useUtils();
 
-  useEffect(() => {
-    fetchInvitations();
-  }, []);
+  const { data: invitations = [], isLoading: loading } = trpc.admin.invitations.list.useQuery();
 
-  const handleSendInvitation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSending(true);
-
-    try {
-      const res = await fetch("/api/admin/invitations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, name }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to send invitation");
-      }
-
+  const createInvitation = trpc.admin.invitations.create.useMutation({
+    onSuccess: () => {
       showToast.success("Invitation Sent", `Invitation sent to ${email}`);
       setEmail("");
       setName("");
       setDialogOpen(false);
-      fetchInvitations();
-    } catch (err) {
-      showToast.error(err);
-    } finally {
-      setSending(false);
-    }
+      utils.admin.invitations.list.invalidate();
+    },
+    onError: (error) => {
+      showToast.error(error.message);
+    },
+  });
+
+  const handleSendInvitation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    createInvitation.mutate({ email, name: name || undefined });
   };
 
-  const getStatusBadge = (status: string, expiresAt: string) => {
-    const isExpired = new Date() > new Date(expiresAt) && status === "pending";
+  const getStatusBadge = (status: string, expiresAt: Date) => {
+    const isExpired = new Date() > expiresAt && status === "pending";
 
     if (status === "accepted") {
       return (
@@ -133,13 +95,13 @@ export default function HostsPage() {
   const stats = {
     total: invitations.length,
     pending: invitations.filter(
-      (i) => i.status === "pending" && new Date() <= new Date(i.expiresAt)
+      (i) => i.status === "pending" && new Date() <= i.expiresAt
     ).length,
     accepted: invitations.filter((i) => i.status === "accepted").length,
     expired: invitations.filter(
       (i) =>
         i.status === "expired" ||
-        (i.status === "pending" && new Date() > new Date(i.expiresAt))
+        (i.status === "pending" && new Date() > i.expiresAt)
     ).length,
   };
 
@@ -202,8 +164,8 @@ export default function HostsPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={sending}>
-                  {sending ? (
+                <Button type="submit" disabled={createInvitation.isPending}>
+                  {createInvitation.isPending ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Sending...
@@ -297,15 +259,12 @@ export default function HostsPage() {
                       {invitation.invitedBy}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {format(new Date(invitation.createdAt), "MMM d, yyyy")}
+                      {format(invitation.createdAt, "MMM d, yyyy")}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {invitation.status === "accepted"
-                        ? format(
-                            new Date(invitation.acceptedAt!),
-                            "MMM d, yyyy"
-                          )
-                        : format(new Date(invitation.expiresAt), "MMM d, yyyy")}
+                        ? format(invitation.acceptedAt!, "MMM d, yyyy")
+                        : format(invitation.expiresAt, "MMM d, yyyy")}
                     </TableCell>
                   </TableRow>
                 ))}

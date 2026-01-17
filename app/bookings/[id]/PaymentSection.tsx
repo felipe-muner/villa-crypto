@@ -16,6 +16,7 @@ import {
   Clock,
 } from "lucide-react";
 import { showToast } from "@/lib/toast";
+import { trpc } from "@/lib/trpc/client";
 
 interface PaymentSectionProps {
   bookingId: string;
@@ -32,8 +33,6 @@ export function PaymentSection({
 }: PaymentSectionProps) {
   const router = useRouter();
   const [txHash, setTxHash] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(false);
   const [copied, setCopied] = useState<"address" | "amount" | null>(null);
   const [paymentFound, setPaymentFound] = useState(false);
   const [paymentDetected, setPaymentDetected] = useState(false);
@@ -43,6 +42,37 @@ export function PaymentSection({
   // Check if this is a USDT payment (automatic detection supported)
   const isUsdtPayment =
     cryptoCurrency === "usdt_eth" || cryptoCurrency === "usdt_bsc";
+
+  const checkPaymentMutation = trpc.booking.checkPayment.useMutation({
+    onSuccess: (data) => {
+      if (data.paid && data.txHash) {
+        setPaymentFound(true);
+        setAutoCheckEnabled(false);
+        showToast.success("Payment Confirmed", "Your payment has been verified");
+        setTimeout(() => router.refresh(), 1500);
+      } else if (data.paymentDetected && data.txHash) {
+        setPaymentDetected(true);
+        setDetectedTxHash(data.txHash);
+        setAutoCheckEnabled(false);
+        showToast.info("Payment Detected", "Awaiting admin confirmation");
+      }
+    },
+    onError: (err) => {
+      console.error("Error checking payment:", err);
+    },
+  });
+
+  const updateBookingMutation = trpc.booking.update.useMutation({
+    onSuccess: () => {
+      setPaymentFound(true);
+      setAutoCheckEnabled(false);
+      showToast.success("Success", "Transaction submitted successfully");
+      setTimeout(() => router.refresh(), 1500);
+    },
+    onError: (err) => {
+      showToast.error(err.message);
+    },
+  });
 
   const getCryptoLabel = () => {
     switch (cryptoCurrency) {
@@ -87,35 +117,10 @@ export function PaymentSection({
   };
 
   // Auto-check for payment (USDT only)
-  const checkPayment = useCallback(async () => {
-    if (!isUsdtPayment || paymentFound) return;
-
-    setChecking(true);
-    try {
-      const res = await fetch(`/api/bookings/${bookingId}/check-payment`, {
-        method: "POST",
-      });
-
-      const data = await res.json();
-
-      if (data.paid && data.txHash) {
-        setPaymentFound(true);
-        setAutoCheckEnabled(false);
-        showToast.success("Payment Confirmed", "Your payment has been verified");
-        setTimeout(() => router.refresh(), 1500);
-      } else if (data.paymentDetected && data.txHash) {
-        // Payment detected but awaiting admin confirmation
-        setPaymentDetected(true);
-        setDetectedTxHash(data.txHash);
-        setAutoCheckEnabled(false);
-        showToast.info("Payment Detected", "Awaiting admin confirmation");
-      }
-    } catch (err) {
-      console.error("Error checking payment:", err);
-    } finally {
-      setChecking(false);
-    }
-  }, [bookingId, isUsdtPayment, paymentFound, router]);
+  const checkPayment = useCallback(() => {
+    if (!isUsdtPayment || paymentFound || checkPaymentMutation.isPending) return;
+    checkPaymentMutation.mutate({ id: bookingId });
+  }, [bookingId, isUsdtPayment, paymentFound, checkPaymentMutation]);
 
   // Poll for payment every 30 seconds for USDT
   useEffect(() => {
@@ -134,7 +139,7 @@ export function PaymentSection({
   }, [isUsdtPayment, autoCheckEnabled, paymentFound, checkPayment]);
 
   // Manual submission for tx hash
-  const handleManualSubmit = async (e?: React.FormEvent) => {
+  const handleManualSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
     if (!txHash.trim()) {
@@ -142,32 +147,11 @@ export function PaymentSection({
       return;
     }
 
-    setLoading(true);
-
-    try {
-      const res = await fetch(`/api/bookings/${bookingId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ txHash: txHash.trim() }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to verify transaction");
-      }
-
-      // Payment verified successfully
-      setPaymentFound(true);
-      setAutoCheckEnabled(false);
-      showToast.success("Success", "Transaction submitted successfully");
-      setTimeout(() => router.refresh(), 1500);
-    } catch (err) {
-      showToast.error(err);
-    } finally {
-      setLoading(false);
-    }
+    updateBookingMutation.mutate({ id: bookingId, data: { txHash: txHash.trim() } });
   };
+
+  const checking = checkPaymentMutation.isPending;
+  const loading = updateBookingMutation.isPending;
 
   const decimals =
     cryptoCurrency === "btc" ? 8 : cryptoCurrency === "eth" ? 6 : 2;

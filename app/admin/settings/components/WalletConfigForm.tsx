@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Loader2, Bitcoin, Coins, DollarSign } from "lucide-react";
 import { showToast } from "@/lib/toast";
+import { trpc } from "@/lib/trpc/client";
 
 interface WalletConfigFormProps {
   initialConfig: {
@@ -17,8 +18,6 @@ interface WalletConfigFormProps {
 }
 
 export function WalletConfigForm({ initialConfig }: WalletConfigFormProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
   const [formData, setFormData] = useState({
     btcAddress: initialConfig.btcAddress,
     ethAddress: initialConfig.ethAddress,
@@ -26,28 +25,18 @@ export function WalletConfigForm({ initialConfig }: WalletConfigFormProps) {
     usdtBscAddress: initialConfig.usdtBscAddress,
   });
 
+  const updateWallet = trpc.admin.wallet.update.useMutation({
+    onSuccess: () => {
+      showToast.saved("Wallet addresses");
+    },
+    onError: (error) => {
+      showToast.error(error.message);
+    },
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
-
-    try {
-      const response = await fetch("/api/admin/wallet", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to save");
-      }
-
-      showToast.saved("Wallet addresses");
-    } catch (error) {
-      showToast.error(error);
-    } finally {
-      setIsSubmitting(false);
-    }
+    updateWallet.mutate(formData);
   };
 
   return (
@@ -150,8 +139,8 @@ export function WalletConfigForm({ initialConfig }: WalletConfigFormProps) {
 
       {/* Submit */}
       <div className="flex justify-end">
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? (
+        <Button type="submit" disabled={updateWallet.isPending}>
+          {updateWallet.isPending ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Saving...

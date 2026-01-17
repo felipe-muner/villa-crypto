@@ -24,6 +24,7 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { showToast } from "@/lib/toast";
+import { trpc } from "@/lib/trpc/client";
 
 interface BookedDate {
   checkIn: string;
@@ -46,7 +47,9 @@ interface PriceConversion {
   price: number;
 }
 
-const cryptoOptions = [
+type CryptoCurrencyOption = "btc" | "eth" | "usdt_eth" | "usdt_bsc";
+
+const cryptoOptions: { value: CryptoCurrencyOption; label: string; symbol: string; icon: string }[] = [
   { value: "btc", label: "Bitcoin", symbol: "BTC", icon: "₿" },
   { value: "eth", label: "Ethereum", symbol: "ETH", icon: "Ξ" },
   { value: "usdt_eth", label: "USDT (ETH)", symbol: "USDT", icon: "₮" },
@@ -72,9 +75,18 @@ export function BookingForm({
     initialCheckOut ? new Date(initialCheckOut) : undefined
   );
   const [guests, setGuests] = useState((initialGuests || 1).toString());
-  const [cryptoCurrency, setCryptoCurrency] = useState("btc");
-  const [loading, setLoading] = useState(false);
+  const [cryptoCurrency, setCryptoCurrency] = useState<"btc" | "eth" | "usdt_eth" | "usdt_bsc">("btc");
   const [conversions, setConversions] = useState<Record<string, PriceConversion> | null>(null);
+
+  const createBooking = trpc.booking.create.useMutation({
+    onSuccess: (data) => {
+      showToast.created("Booking");
+      router.push(`/bookings/${data.id}`);
+    },
+    onError: (error) => {
+      showToast.error(error.message);
+    },
+  });
 
   const nights =
     checkIn && checkOut ? differenceInDays(checkOut, checkIn) : 0;
@@ -82,14 +94,19 @@ export function BookingForm({
 
   const minDate = addDays(new Date(), 1);
 
-  useEffect(() => {
-    if (totalPrice > 0) {
-      fetch(`/api/prices?amount=${totalPrice}`)
-        .then((res) => res.json())
-        .then((data) => setConversions(data.conversions))
-        .catch(console.error);
+  const { data: pricesData } = trpc.prices.get.useQuery(
+    { amount: totalPrice },
+    {
+      enabled: totalPrice > 0,
+      refetchOnWindowFocus: false,
     }
-  }, [totalPrice]);
+  );
+
+  useEffect(() => {
+    if (pricesData?.conversions) {
+      setConversions(pricesData.conversions);
+    }
+  }, [pricesData]);
 
   const isDateBooked = (date: Date): boolean => {
     const dayStart = startOfDay(date);
@@ -135,34 +152,13 @@ export function BookingForm({
       return;
     }
 
-    setLoading(true);
-
-    try {
-      const res = await fetch("/api/bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          villaId,
-          checkIn: format(checkIn, "yyyy-MM-dd"),
-          checkOut: format(checkOut, "yyyy-MM-dd"),
-          guests: parseInt(guests),
-          cryptoCurrency,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to create booking");
-      }
-
-      showToast.created("Booking");
-      router.push(`/bookings/${data.id}`);
-    } catch (err) {
-      showToast.error(err);
-    } finally {
-      setLoading(false);
-    }
+    createBooking.mutate({
+      villaId,
+      checkIn: format(checkIn, "yyyy-MM-dd"),
+      checkOut: format(checkOut, "yyyy-MM-dd"),
+      guests: parseInt(guests),
+      cryptoCurrency,
+    });
   };
 
   const getCryptoAmount = () => {
@@ -276,11 +272,11 @@ export function BookingForm({
 
       <Button
         onClick={handleSubmit}
-        disabled={loading || nights <= 0}
+        disabled={createBooking.isPending || nights <= 0}
         className="w-full"
         size="lg"
       >
-        {loading ? (
+        {createBooking.isPending ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             Processing...
