@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Home, MapPin, Users, Bed, Bath, Edit } from "lucide-react";
+import { BlockedDatesManager } from "@/components/BlockedDatesManager";
 
 export default async function HostVillasPage() {
   const session = await auth();
@@ -104,12 +105,15 @@ export default async function HostVillasPage() {
                         /night
                       </span>
                     </p>
-                    <Link href={`/host/villas/${villa.id}/edit`}>
-                      <Button variant="outline" size="sm">
-                        <Edit className="h-4 w-4 mr-1" />
-                        Edit
-                      </Button>
-                    </Link>
+                    <div className="flex gap-2">
+                      <BlockedDatesManager villaId={villa.id} villaName={villa.name} />
+                      <Link href={`/host/villas/${villa.id}/edit`}>
+                        <Button variant="outline" size="sm">
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

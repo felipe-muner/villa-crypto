@@ -1,4 +1,4 @@
-import { db, villas, bookings } from "@/lib/db";
+import { db, villas, bookings, blockedDates } from "@/lib/db";
 import { eq, and, or, gte } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import Image from "next/image";
@@ -58,6 +58,25 @@ export default async function VillaDetailPage({ params, searchParams }: PageProp
   const bookedDates = existingBookings.map((b) => ({
     checkIn: b.checkIn.toISOString(),
     checkOut: b.checkOut.toISOString(),
+  }));
+
+  // Get blocked dates for this villa
+  const villaBlockedDates = await db
+    .select({
+      startDate: blockedDates.startDate,
+      endDate: blockedDates.endDate,
+    })
+    .from(blockedDates)
+    .where(
+      and(
+        eq(blockedDates.villaId, id),
+        gte(blockedDates.endDate, new Date())
+      )
+    );
+
+  const blockedDateRanges = villaBlockedDates.map((b) => ({
+    startDate: b.startDate.toISOString(),
+    endDate: b.endDate.toISOString(),
   }));
 
   return (
@@ -184,6 +203,7 @@ export default async function VillaDetailPage({ params, searchParams }: PageProp
                   pricePerNight={Number(villa.pricePerNight)}
                   maxGuests={villa.maxGuests || 1}
                   bookedDates={bookedDates}
+                  blockedDates={blockedDateRanges}
                   initialCheckIn={checkIn}
                   initialCheckOut={checkOut}
                   initialGuests={guests ? parseInt(guests, 10) : undefined}

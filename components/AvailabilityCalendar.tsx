@@ -14,6 +14,8 @@ interface DayAvailability {
   available: boolean;
   bookingId?: string;
   bookingStatus?: string;
+  blockedId?: string;
+  blockedReason?: string;
 }
 
 interface AvailabilityData {
@@ -25,6 +27,7 @@ interface AvailabilityData {
   totalDays: number;
   availableDays: number;
   bookedDays: number;
+  blockedDays?: number;
 }
 
 interface AvailabilityCalendarProps {
@@ -114,7 +117,7 @@ export function AvailabilityCalendar({
         ) : data ? (
           <>
             {/* Stats */}
-            <div className="flex gap-4 mb-4 text-sm">
+            <div className="flex gap-4 mb-4 text-sm flex-wrap">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-sm bg-green-500" />
                 <span>Available ({data.availableDays})</span>
@@ -123,6 +126,12 @@ export function AvailabilityCalendar({
                 <div className="w-3 h-3 rounded-sm bg-red-500" />
                 <span>Booked ({data.bookedDays})</span>
               </div>
+              {data.blockedDays !== undefined && data.blockedDays > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-sm bg-gray-400" />
+                  <span>Blocked ({data.blockedDays})</span>
+                </div>
+              )}
             </div>
 
             {/* Calendar Grid */}
@@ -131,32 +140,46 @@ export function AvailabilityCalendar({
                 {data.days.map((day) => {
                   const isToday = day.date === today;
                   const isPast = day.date < today;
+                  const isBlocked = !!day.blockedId && !day.bookingId;
+                  const isBooked = !!day.bookingId;
 
                   return (
                     <div
                       key={day.date}
                       className={cn(
                         "flex flex-col items-center justify-center w-10 h-14 rounded-md text-xs transition-colors",
+                        // Available
                         day.available
                           ? isPast
                             ? "bg-gray-100 dark:bg-gray-800 text-gray-400"
                             : "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50"
-                          : isPast
-                            ? "bg-gray-200 dark:bg-gray-700 text-gray-500"
-                            : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50",
+                          // Booked
+                          : isBooked
+                            ? isPast
+                              ? "bg-gray-200 dark:bg-gray-700 text-gray-500"
+                              : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50"
+                          // Blocked
+                          : isBlocked
+                            ? isPast
+                              ? "bg-gray-200 dark:bg-gray-700 text-gray-500"
+                              : "bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500"
+                          // Fallback
+                          : "bg-gray-100 dark:bg-gray-800 text-gray-400",
                         isToday && "ring-2 ring-blue-500 ring-offset-1"
                       )}
                       title={
                         day.available
                           ? `${day.date} - Available`
-                          : `${day.date} - Booked (${day.bookingStatus})`
+                          : isBooked
+                            ? `${day.date} - Booked (${day.bookingStatus})`
+                            : `${day.date} - Blocked${day.blockedReason ? ` (${day.blockedReason})` : ""}`
                       }
                     >
                       <span className="text-[10px] text-muted-foreground">
                         {day.dayOfWeek}
                       </span>
                       <span className="font-medium">{day.dayOfMonth}</span>
-                      {!day.available && (
+                      {isBooked && (
                         <div
                           className={cn(
                             "w-1.5 h-1.5 rounded-full mt-0.5",
@@ -168,6 +191,9 @@ export function AvailabilityCalendar({
                           )}
                           title={day.bookingStatus}
                         />
+                      )}
+                      {isBlocked && !isBooked && (
+                        <div className="w-1.5 h-1.5 rounded-full mt-0.5 bg-gray-500" title="Blocked" />
                       )}
                     </div>
                   );

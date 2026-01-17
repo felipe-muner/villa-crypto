@@ -1,8 +1,9 @@
+import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { eq, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, or, desc } from "drizzle-orm";
 import { router, hostProcedure } from "../init";
 import { hostStatsQuerySchema } from "../schemas";
-import { villas, bookings } from "@/lib/db/schema";
+import { villas, bookings, blockedDates } from "@/lib/db/schema";
 import {
   fromAPIDateString,
   startOfDayUTC,
@@ -192,4 +193,192 @@ export const hostRouter = router({
         },
       };
     }),
+
+  // Blocked dates management
+  blockedDates: router({
+    // List blocked dates for a villa
+    list: hostProcedure
+      .input(z.object({
+        villaId: z.string().uuid(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        // Verify ownership
+        const [villa] = await ctx.db
+          .select()
+          .from(villas)
+          .where(eq(villas.id, input.villaId))
+          .limit(1);
+
+        if (!villa) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Villa not found",
+          });
+        }
+
+        const isAdmin = ctx.session.user.role === "admin";
+        const isOwner = villa.ownerEmail === ctx.session.user.email;
+
+        if (!isAdmin && !isOwner) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You can only manage your own villas",
+          });
+        }
+
+        // Build query conditions
+        const conditions = [eq(blockedDates.villaId, input.villaId)];
+
+        if (input.startDate) {
+          conditions.push(gte(blockedDates.endDate, startOfDayUTC(fromAPIDateString(input.startDate))));
+        }
+        if (input.endDate) {
+          conditions.push(lte(blockedDates.startDate, endOfDayUTC(fromAPIDateString(input.endDate))));
+        }
+
+        const blocked = await ctx.db
+          .select()
+          .from(blockedDates)
+          .where(and(...conditions))
+          .orderBy(desc(blockedDates.startDate));
+
+        return blocked;
+      }),
+
+    // Add blocked dates
+    add: hostProcedure
+      .input(z.object({
+        villaId: z.string().uuid(),
+        startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        reason: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Verify ownership
+        const [villa] = await ctx.db
+          .select()
+          .from(villas)
+          .where(eq(villas.id, input.villaId))
+          .limit(1);
+
+        if (!villa) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Villa not found",
+          });
+        }
+
+        const isAdmin = ctx.session.user.role === "admin";
+        const isOwner = villa.ownerEmail === ctx.session.user.email;
+
+        if (!isAdmin && !isOwner) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You can only manage your own villas",
+          });
+        }
+
+        const start = startOfDayUTC(fromAPIDateString(input.startDate));
+        const end = endOfDayUTC(fromAPIDateString(input.endDate));
+
+        if (start > end) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Start date must be before end date",
+          });
+        }
+
+        // Check for existing bookings in this range
+        const existingBookings = await ctx.db
+          .select()
+          .from(bookings)
+          .where(
+            and(
+              eq(bookings.villaId, input.villaId),
+              or(
+                eq(bookings.status, "pending"),
+                eq(bookings.status, "paid"),
+                eq(bookings.status, "confirmed")
+              ),
+              // Booking overlaps with the range
+              lte(bookings.checkIn, end),
+              gte(bookings.checkOut, start)
+            )
+          );
+
+        if (existingBookings.length > 0) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Cannot block dates that have existing bookings",
+          });
+        }
+
+        // Create blocked date entry
+        const [blocked] = await ctx.db
+          .insert(blockedDates)
+          .values({
+            villaId: input.villaId,
+            startDate: start,
+            endDate: end,
+            reason: input.reason,
+            createdBy: ctx.session.user.email,
+          })
+          .returning();
+
+        return blocked;
+      }),
+
+    // Remove blocked dates
+    remove: hostProcedure
+      .input(z.object({
+        id: z.string().uuid(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Get the blocked date entry
+        const [blocked] = await ctx.db
+          .select()
+          .from(blockedDates)
+          .where(eq(blockedDates.id, input.id))
+          .limit(1);
+
+        if (!blocked) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Blocked date not found",
+          });
+        }
+
+        // Verify ownership
+        const [villa] = await ctx.db
+          .select()
+          .from(villas)
+          .where(eq(villas.id, blocked.villaId))
+          .limit(1);
+
+        if (!villa) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Villa not found",
+          });
+        }
+
+        const isAdmin = ctx.session.user.role === "admin";
+        const isOwner = villa.ownerEmail === ctx.session.user.email;
+
+        if (!isAdmin && !isOwner) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You can only manage your own villas",
+          });
+        }
+
+        await ctx.db
+          .delete(blockedDates)
+          .where(eq(blockedDates.id, input.id));
+
+        return { success: true };
+      }),
+  }),
 });

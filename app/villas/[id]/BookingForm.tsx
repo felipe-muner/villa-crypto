@@ -31,11 +31,17 @@ interface BookedDate {
   checkOut: string;
 }
 
+interface BlockedDateRange {
+  startDate: string;
+  endDate: string;
+}
+
 interface BookingFormProps {
   villaId: string;
   pricePerNight: number;
   maxGuests: number;
   bookedDates: BookedDate[];
+  blockedDates?: BlockedDateRange[];
   initialCheckIn?: string;
   initialCheckOut?: string;
   initialGuests?: number;
@@ -61,6 +67,7 @@ export function BookingForm({
   pricePerNight,
   maxGuests,
   bookedDates,
+  blockedDates = [],
   initialCheckIn,
   initialCheckOut,
   initialGuests,
@@ -110,7 +117,9 @@ export function BookingForm({
 
   const isDateBooked = (date: Date): boolean => {
     const dayStart = startOfDay(date);
-    return bookedDates.some((booking) => {
+
+    // Check if date is in a booked range
+    const isBooked = bookedDates.some((booking) => {
       const checkInDate = startOfDay(parseISO(booking.checkIn));
       const checkOutDate = startOfDay(parseISO(booking.checkOut));
       return isWithinInterval(dayStart, {
@@ -118,6 +127,20 @@ export function BookingForm({
         end: addDays(checkOutDate, -1),
       });
     });
+
+    if (isBooked) return true;
+
+    // Check if date is in a blocked range
+    const isBlocked = blockedDates.some((blocked) => {
+      const startDate = startOfDay(parseISO(blocked.startDate));
+      const endDate = startOfDay(parseISO(blocked.endDate));
+      return isWithinInterval(dayStart, {
+        start: startDate,
+        end: endDate,
+      });
+    });
+
+    return isBlocked;
   };
 
   const hasOverlap = (): boolean => {

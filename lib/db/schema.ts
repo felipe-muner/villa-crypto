@@ -100,3 +100,16 @@ export const walletConfig = pgTable("wallet_config", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   updatedBy: text("updated_by").references(() => users.email),
 });
+
+// Blocked dates table (host can block dates for their villas)
+export const blockedDates = pgTable("blocked_dates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  villaId: uuid("villa_id")
+    .references(() => villas.id, { onDelete: "cascade" })
+    .notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  reason: text("reason"),
+  createdBy: text("created_by").references(() => users.email).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
