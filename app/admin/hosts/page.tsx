@@ -24,7 +24,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   UserPlus,
   Mail,
@@ -34,6 +33,7 @@ import {
   Loader2,
   Send,
 } from "lucide-react";
+import { showToast } from "@/lib/toast";
 
 interface HostInvitation {
   id: string;
@@ -52,8 +52,6 @@ export default function HostsPage() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const fetchInvitations = async () => {
     try {
@@ -63,6 +61,7 @@ export default function HostsPage() {
         setInvitations(data);
       }
     } catch (err) {
+      showToast.error("Failed to fetch invitations");
       console.error("Failed to fetch invitations:", err);
     } finally {
       setLoading(false);
@@ -76,8 +75,6 @@ export default function HostsPage() {
   const handleSendInvitation = async (e: React.FormEvent) => {
     e.preventDefault();
     setSending(true);
-    setError(null);
-    setSuccess(null);
 
     try {
       const res = await fetch("/api/admin/invitations", {
@@ -89,17 +86,16 @@ export default function HostsPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Failed to send invitation");
-        return;
+        throw new Error(data.error || "Failed to send invitation");
       }
 
-      setSuccess(`Invitation sent to ${email}`);
+      showToast.success("Invitation Sent", `Invitation sent to ${email}`);
       setEmail("");
       setName("");
       setDialogOpen(false);
       fetchInvitations();
-    } catch {
-      setError("Failed to send invitation");
+    } catch (err) {
+      showToast.error(err);
     } finally {
       setSending(false);
     }
@@ -173,11 +169,6 @@ export default function HostsPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                )}
                 <div className="space-y-2">
                   <Label htmlFor="email">Email Address *</Label>
                   <Input
@@ -229,15 +220,6 @@ export default function HostsPage() {
           </DialogContent>
         </Dialog>
       </div>
-
-      {success && (
-        <Alert className="mb-6 bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
-          <CheckCircle className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-800 dark:text-green-200">
-            {success}
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

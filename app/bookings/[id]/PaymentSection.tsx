@@ -11,11 +11,11 @@ import {
   Copy,
   Check,
   Loader2,
-  AlertCircle,
   RefreshCw,
   CheckCircle,
   Clock,
 } from "lucide-react";
+import { showToast } from "@/lib/toast";
 
 interface PaymentSectionProps {
   bookingId: string;
@@ -34,7 +34,6 @@ export function PaymentSection({
   const [txHash, setTxHash] = useState("");
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [error, setError] = useState("");
   const [copied, setCopied] = useState<"address" | "amount" | null>(null);
   const [paymentFound, setPaymentFound] = useState(false);
   const [paymentDetected, setPaymentDetected] = useState(false);
@@ -79,8 +78,10 @@ export function PaymentSection({
     try {
       await navigator.clipboard.writeText(text);
       setCopied(type);
+      showToast.success("Copied", `${type === "address" ? "Address" : "Amount"} copied to clipboard`);
       setTimeout(() => setCopied(null), 2000);
     } catch (err) {
+      showToast.error("Failed to copy to clipboard");
       console.error("Failed to copy:", err);
     }
   };
@@ -100,12 +101,14 @@ export function PaymentSection({
       if (data.paid && data.txHash) {
         setPaymentFound(true);
         setAutoCheckEnabled(false);
+        showToast.success("Payment Confirmed", "Your payment has been verified");
         setTimeout(() => router.refresh(), 1500);
       } else if (data.paymentDetected && data.txHash) {
         // Payment detected but awaiting admin confirmation
         setPaymentDetected(true);
         setDetectedTxHash(data.txHash);
         setAutoCheckEnabled(false);
+        showToast.info("Payment Detected", "Awaiting admin confirmation");
       }
     } catch (err) {
       console.error("Error checking payment:", err);
@@ -135,12 +138,11 @@ export function PaymentSection({
     if (e) e.preventDefault();
 
     if (!txHash.trim()) {
-      setError("Please enter a transaction hash");
+      showToast.error("Please enter a transaction hash");
       return;
     }
 
     setLoading(true);
-    setError("");
 
     try {
       const res = await fetch(`/api/bookings/${bookingId}`, {
@@ -158,9 +160,10 @@ export function PaymentSection({
       // Payment verified successfully
       setPaymentFound(true);
       setAutoCheckEnabled(false);
+      showToast.success("Success", "Transaction submitted successfully");
       setTimeout(() => router.refresh(), 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      showToast.error(err);
     } finally {
       setLoading(false);
     }
@@ -337,12 +340,6 @@ export function PaymentSection({
               <p className="text-sm text-muted-foreground mb-3">
                 Payment not detected? Enter your transaction hash manually:
               </p>
-              {error && (
-                <Alert variant="destructive" className="mb-3">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
               <div className="flex gap-3">
                 <Input
                   value={txHash}
@@ -375,12 +372,6 @@ export function PaymentSection({
               <label className="text-sm text-muted-foreground">
                 After sending, paste your transaction hash below
               </label>
-              {error && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
               <div className="flex gap-3">
                 <Input
                   value={txHash}

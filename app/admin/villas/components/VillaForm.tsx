@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ImagePlus, X, AlertCircle } from "lucide-react";
+import { Loader2, ImagePlus, X } from "lucide-react";
+import { showToast } from "@/lib/toast";
 
 interface VillaFormProps {
   villa?: Villa;
@@ -23,7 +23,6 @@ export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormPr
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: villa?.name || "",
@@ -44,7 +43,6 @@ export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormPr
     if (!files || files.length === 0) return;
 
     setIsUploading(true);
-    setError(null);
 
     try {
       for (const file of Array.from(files)) {
@@ -63,8 +61,9 @@ export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormPr
         const data = await response.json();
         setImages((prev) => [...prev, data.url]);
       }
+      showToast.success("Uploaded", "Image uploaded successfully");
     } catch (err) {
-      setError("Failed to upload image. Please try again.");
+      showToast.error(err);
       console.error("Upload error:", err);
     } finally {
       setIsUploading(false);
@@ -81,7 +80,6 @@ export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormPr
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setError(null);
 
     try {
       const amenitiesArray = formData.amenities
@@ -116,10 +114,11 @@ export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormPr
         throw new Error(data.error || "Failed to save villa");
       }
 
+      showToast.success("Success", villa ? "Villa updated successfully" : "Villa created successfully");
       router.push(redirectPath);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      showToast.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -127,13 +126,6 @@ export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormPr
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
       {/* Basic Info */}
       <Card>
         <CardHeader>

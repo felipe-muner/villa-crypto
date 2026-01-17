@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,8 +26,8 @@ import {
   Banknote,
   Check,
   X,
-  AlertCircle,
 } from "lucide-react";
+import { showToast } from "@/lib/toast";
 
 interface VerificationResult {
   valid: boolean;
@@ -51,12 +50,10 @@ export function HostBookingActions({
   bookingId,
   status,
   txHash,
-  villaName,
   adminNotes: initialNotes,
 }: HostBookingActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
@@ -65,9 +62,8 @@ export function HostBookingActions({
   const [notes, setNotes] = useState(initialNotes || "");
   const [savingNotes, setSavingNotes] = useState(false);
 
-  const updateBooking = async (data: Record<string, unknown>) => {
+  const updateBooking = async (data: Record<string, unknown>, successMessage?: string) => {
     setLoading(true);
-    setError(null);
 
     try {
       const res = await fetch(`/api/bookings/${bookingId}`, {
@@ -81,10 +77,13 @@ export function HostBookingActions({
         throw new Error(result.error || "Failed to update booking");
       }
 
+      if (successMessage) {
+        showToast.success("Success", successMessage);
+      }
       router.refresh();
       setShowConfirmDialog(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      showToast.error(err);
     } finally {
       setLoading(false);
     }
@@ -96,13 +95,18 @@ export function HostBookingActions({
 
   const confirmStatusChange = () => {
     if (showConfirmDialog) {
-      updateBooking({ status: showConfirmDialog });
+      const messages: Record<string, string> = {
+        paid: "Payment confirmed",
+        confirmed: "Booking confirmed",
+        completed: "Booking marked as completed",
+        cancelled: "Booking cancelled",
+      };
+      updateBooking({ status: showConfirmDialog }, messages[showConfirmDialog]);
     }
   };
 
   const verifyBlockchainTx = async () => {
     setVerifying(true);
-    setError(null);
     setVerificationResult(null);
 
     try {
@@ -117,11 +121,14 @@ export function HostBookingActions({
       }
 
       setVerificationResult(data.verification);
+      if (data.verification.valid) {
+        showToast.success("Verified", "Transaction verified successfully");
+      }
       if (data.bookingStatus !== status) {
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Verification failed");
+      showToast.error(err);
     } finally {
       setVerifying(false);
     }
@@ -129,12 +136,11 @@ export function HostBookingActions({
 
   const assignPaymentManually = async () => {
     if (!manualTxHash.trim()) {
-      setError("Please enter a transaction hash");
+      showToast.error("Please enter a transaction hash");
       return;
     }
 
     setAssigningPayment(true);
-    setError(null);
 
     try {
       const res = await fetch(`/api/bookings/${bookingId}`, {
@@ -148,10 +154,11 @@ export function HostBookingActions({
         throw new Error(result.error || "Failed to assign payment");
       }
 
+      showToast.success("Success", "Payment assigned successfully");
       setManualTxHash("");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      showToast.error(err);
     } finally {
       setAssigningPayment(false);
     }
@@ -159,7 +166,6 @@ export function HostBookingActions({
 
   const saveNotes = async () => {
     setSavingNotes(true);
-    setError(null);
 
     try {
       const res = await fetch(`/api/bookings/${bookingId}`, {
@@ -173,9 +179,10 @@ export function HostBookingActions({
         throw new Error(result.error || "Failed to save notes");
       }
 
+      showToast.saved("Notes");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      showToast.error(err);
     } finally {
       setSavingNotes(false);
     }
@@ -189,13 +196,6 @@ export function HostBookingActions({
           <CardTitle className="text-lg">Actions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
           {/* Pending - waiting for payment */}
           {status === "pending" && !txHash && (
             <div className="text-center py-4">
@@ -405,7 +405,7 @@ export function HostBookingActions({
                   <div className="flex justify-between items-center py-1 border-b border-green-200 dark:border-green-800">
                     <span className="text-muted-foreground">Status</span>
                     <span className={`font-medium ${verificationResult.confirmed ? "text-green-600" : "text-yellow-600"}`}>
-                      {verificationResult.confirmed ? "✓ Confirmed" : "⏳ Pending"}
+                      {verificationResult.confirmed ? "Confirmed" : "Pending"}
                     </span>
                   </div>
                   <div className="flex justify-between items-center py-1 border-b border-green-200 dark:border-green-800">

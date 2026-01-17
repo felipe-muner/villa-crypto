@@ -15,6 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Loader2 } from "lucide-react";
+import { showToast } from "@/lib/toast";
 
 interface DeleteVillaButtonProps {
   villaId: string;
@@ -34,14 +35,15 @@ export function DeleteVillaButton({ villaId, villaName }: DeleteVillaButtonProps
       });
 
       if (!response.ok) {
-        throw new Error("Failed to delete villa");
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete villa");
       }
 
+      showToast.deleted("Villa");
       setOpen(false);
       router.refresh();
     } catch (error) {
-      console.error("Error deleting villa:", error);
-      alert("Failed to delete villa");
+      showToast.error(error);
     } finally {
       setIsDeleting(false);
     }

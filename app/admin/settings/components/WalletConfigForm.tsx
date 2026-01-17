@@ -4,8 +4,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle, AlertCircle, Loader2, Bitcoin, Coins, DollarSign } from "lucide-react";
+import { Loader2, Bitcoin, Coins, DollarSign } from "lucide-react";
+import { showToast } from "@/lib/toast";
 
 interface WalletConfigFormProps {
   initialConfig: {
@@ -18,7 +18,6 @@ interface WalletConfigFormProps {
 
 export function WalletConfigForm({ initialConfig }: WalletConfigFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const [formData, setFormData] = useState({
     btcAddress: initialConfig.btcAddress,
@@ -30,7 +29,6 @@ export function WalletConfigForm({ initialConfig }: WalletConfigFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setMessage(null);
 
     try {
       const response = await fetch("/api/admin/wallet", {
@@ -44,12 +42,9 @@ export function WalletConfigForm({ initialConfig }: WalletConfigFormProps) {
         throw new Error(data.error || "Failed to save");
       }
 
-      setMessage({ type: "success", text: "Wallet addresses saved successfully!" });
+      showToast.saved("Wallet addresses");
     } catch (error) {
-      setMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Something went wrong",
-      });
+      showToast.error(error);
     } finally {
       setIsSubmitting(false);
     }
@@ -57,17 +52,6 @@ export function WalletConfigForm({ initialConfig }: WalletConfigFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {message && (
-        <Alert variant={message.type === "error" ? "destructive" : "default"}>
-          {message.type === "success" ? (
-            <CheckCircle className="h-4 w-4" />
-          ) : (
-            <AlertCircle className="h-4 w-4" />
-          )}
-          <AlertDescription>{message.text}</AlertDescription>
-        </Alert>
-      )}
-
       {/* Bitcoin */}
       <Card>
         <CardHeader>

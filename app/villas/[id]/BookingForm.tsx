@@ -12,7 +12,6 @@ import {
   startOfDay,
 } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -21,10 +20,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { AlertCircle, Bitcoin, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { showToast } from "@/lib/toast";
 
 interface BookedDate {
   checkIn: string;
@@ -75,7 +74,6 @@ export function BookingForm({
   const [guests, setGuests] = useState((initialGuests || 1).toString());
   const [cryptoCurrency, setCryptoCurrency] = useState("btc");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [conversions, setConversions] = useState<Record<string, PriceConversion> | null>(null);
 
   const nights =
@@ -123,22 +121,21 @@ export function BookingForm({
     }
 
     if (!checkIn || !checkOut) {
-      setError("Please select check-in and check-out dates");
+      showToast.error("Please select check-in and check-out dates");
       return;
     }
 
     if (nights <= 0) {
-      setError("Check-out must be after check-in");
+      showToast.error("Check-out must be after check-in");
       return;
     }
 
     if (hasOverlap()) {
-      setError("Selected dates overlap with existing bookings");
+      showToast.error("Selected dates overlap with existing bookings");
       return;
     }
 
     setLoading(true);
-    setError("");
 
     try {
       const res = await fetch("/api/bookings", {
@@ -159,9 +156,10 @@ export function BookingForm({
         throw new Error(data.error || "Failed to create booking");
       }
 
+      showToast.created("Booking");
       router.push(`/bookings/${data.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      showToast.error(err);
     } finally {
       setLoading(false);
     }
@@ -185,13 +183,6 @@ export function BookingForm({
 
   return (
     <div className="space-y-4">
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <label className="text-sm font-medium">Check-in</label>

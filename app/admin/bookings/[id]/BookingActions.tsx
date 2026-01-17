@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,7 +17,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Check, X, AlertCircle } from "lucide-react";
+import { Loader2, Check, X } from "lucide-react";
+import { showToast } from "@/lib/toast";
 
 interface VerificationResult {
   valid: boolean;
@@ -45,16 +45,14 @@ export function BookingActions({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
-  const [error, setError] = useState("");
   const [notes, setNotes] = useState(initialNotes);
   const [showConfirmDialog, setShowConfirmDialog] = useState<string | null>(null);
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [manualTxHash, setManualTxHash] = useState("");
   const [assigningPayment, setAssigningPayment] = useState(false);
 
-  const updateBooking = async (data: Record<string, unknown>) => {
+  const updateBooking = async (data: Record<string, unknown>, successMessage?: string) => {
     setLoading(true);
-    setError("");
 
     try {
       const res = await fetch(`/api/bookings/${bookingId}`, {
@@ -69,10 +67,13 @@ export function BookingActions({
         throw new Error(result.error || "Failed to update booking");
       }
 
+      if (successMessage) {
+        showToast.success("Success", successMessage);
+      }
       router.refresh();
       setShowConfirmDialog(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      showToast.error(err);
     } finally {
       setLoading(false);
     }
@@ -84,22 +85,27 @@ export function BookingActions({
 
   const confirmStatusChange = () => {
     if (showConfirmDialog) {
-      updateBooking({ status: showConfirmDialog });
+      const messages: Record<string, string> = {
+        paid: "Payment confirmed",
+        confirmed: "Booking confirmed",
+        completed: "Booking marked as completed",
+        cancelled: "Booking cancelled",
+      };
+      updateBooking({ status: showConfirmDialog }, messages[showConfirmDialog]);
     }
   };
 
   const saveNotes = () => {
-    updateBooking({ adminNotes: notes });
+    updateBooking({ adminNotes: notes }, "Notes saved");
   };
 
   const assignPaymentManually = async () => {
     if (!manualTxHash.trim()) {
-      setError("Please enter a transaction hash");
+      showToast.error("Please enter a transaction hash");
       return;
     }
 
     setAssigningPayment(true);
-    setError("");
 
     try {
       const res = await fetch(`/api/bookings/${bookingId}`, {
@@ -114,10 +120,11 @@ export function BookingActions({
         throw new Error(result.error || "Failed to assign payment");
       }
 
+      showToast.success("Success", "Payment assigned successfully");
       setManualTxHash("");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      showToast.error(err);
     } finally {
       setAssigningPayment(false);
     }
@@ -125,7 +132,6 @@ export function BookingActions({
 
   const verifyBlockchainTx = async () => {
     setVerifying(true);
-    setError("");
     setVerificationResult(null);
 
     try {
@@ -140,11 +146,14 @@ export function BookingActions({
       }
 
       setVerificationResult(data.verification);
+      if (data.verification.valid) {
+        showToast.success("Verified", "Transaction verified successfully");
+      }
       if (data.bookingStatus !== currentStatus) {
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Verification failed");
+      showToast.error(err);
     } finally {
       setVerifying(false);
     }
@@ -200,13 +209,6 @@ export function BookingActions({
           <CardTitle className="text-lg">Actions</CardTitle>
         </CardHeader>
         <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
           {actions.length > 0 ? (
             <div className="space-y-3">
               {actions.map((action) => (
@@ -234,7 +236,7 @@ export function BookingActions({
         <Card className="border-green-500 bg-green-50 dark:bg-green-950">
           <CardHeader>
             <CardTitle className="text-lg text-green-700 dark:text-green-300">
-              💰 Payment Detected
+              Payment Detected
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -355,7 +357,7 @@ export function BookingActions({
                   <div className="flex justify-between items-center py-1 border-b border-green-200 dark:border-green-800">
                     <span className="text-muted-foreground">Status</span>
                     <span className={`font-medium ${verificationResult.confirmed ? "text-green-600" : "text-yellow-600"}`}>
-                      {verificationResult.confirmed ? "✓ Confirmed" : "⏳ Pending"}
+                      {verificationResult.confirmed ? "Confirmed" : "Pending"}
                     </span>
                   </div>
                   <div className="flex justify-between items-center py-1 border-b border-green-200 dark:border-green-800">
@@ -411,6 +413,8 @@ export function BookingActions({
                 ? "confirm"
                 : showConfirmDialog === "completed"
                 ? "mark as completed"
+                : showConfirmDialog === "paid"
+                ? "confirm payment for"
                 : "cancel"}{" "}
               this booking?
               {showConfirmDialog === "cancelled" && (
