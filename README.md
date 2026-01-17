@@ -138,6 +138,66 @@ Users with emails in the `ADMIN_EMAILS` environment variable.
 |------|------|-------------|
 | Host Invite | `/invite/[token]` | Accept host invitation link |
 
+## Features
+
+### Crypto Payments
+
+The platform supports cryptocurrency payments for villa bookings:
+
+**Supported Cryptocurrencies:**
+- **BTC** - Bitcoin
+- **ETH** - Ethereum
+- **USDT (ERC-20)** - Tether on Ethereum network
+- **USDT (BEP-20)** - Tether on BSC/BNB Chain
+
+**Payment Flow:**
+1. Guest selects dates, guests count, and preferred cryptocurrency
+2. System calculates the crypto amount based on real-time prices (via CoinGecko API)
+3. Booking is created with status `pending`
+4. Guest is shown the wallet address and exact amount to send
+5. For USDT payments: System automatically scans for incoming transfers every 30 seconds
+6. For BTC/ETH payments: Guest submits transaction hash manually
+7. Host/Admin verifies the transaction on blockchain
+8. Booking status updates: `pending` → `paid` → `confirmed`
+
+**Wallet Configuration:**
+- Admins configure receiving wallet addresses in `/admin/settings`
+- Each cryptocurrency can have a different wallet address
+- USDT supports both Ethereum and BSC networks
+
+**Transaction Verification:**
+- BTC: Verified via Blockstream API
+- ETH: Verified via Etherscan API
+- USDT: Automatic detection via Etherscan/BscScan token transfer APIs
+
+### Availability Management
+
+Hosts can manage their villa availability by blocking dates:
+
+**How it works:**
+1. Host goes to `/host/villas` (My Villas page)
+2. Clicks "Availability" button on any villa
+3. Interactive calendar opens showing:
+   - **Green** - Available dates
+   - **Red** - Booked dates (cannot be blocked)
+   - **Gray** - Blocked by host
+   - **Blue** - Currently selected
+4. Host clicks/drags to select dates, then clicks "Block Selected Dates"
+5. Optional: Add a reason (e.g., "Maintenance", "Personal use")
+6. Blocked dates are immediately hidden from guest search
+
+**Features:**
+- Block single dates or date ranges
+- Add optional reason for blocking
+- View and remove existing blocked periods
+- Cannot block dates that have active bookings
+- Guests see blocked dates as unavailable in the booking calendar
+
+**Data Model:**
+- Blocked dates stored in `blocked_dates` table (separate from bookings)
+- Industry-standard approach (same as Airbnb, Booking.com)
+- Allows for clean reporting and future features (recurring blocks, etc.)
+
 ## Scripts
 
 | Command | Description |
