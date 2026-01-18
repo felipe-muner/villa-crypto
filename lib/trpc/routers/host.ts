@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { eq, and, gte, lte, inArray, or, desc } from "drizzle-orm";
 import { router, hostProcedure } from "../init";
 import { hostStatsQuerySchema } from "../schemas";
-import { villas, bookings, blockedDates } from "@/lib/db/schema";
+import { villas, bookings, blockedDates, users } from "@/lib/db/schema";
 import {
   fromAPIDateString,
   startOfDayUTC,
@@ -379,6 +379,59 @@ export const hostRouter = router({
           .where(eq(blockedDates.id, input.id));
 
         return { success: true };
+      }),
+  }),
+
+  // Settings management
+  settings: router({
+    // Get current host settings (wallet addresses)
+    get: hostProcedure.query(async ({ ctx }) => {
+      const [user] = await ctx.db
+        .select({
+          btcAddress: users.btcAddress,
+          ethAddress: users.ethAddress,
+          usdtEthAddress: users.usdtEthAddress,
+          usdtBscAddress: users.usdtBscAddress,
+        })
+        .from(users)
+        .where(eq(users.email, ctx.session.user.email))
+        .limit(1);
+
+      return {
+        btcAddress: user?.btcAddress || "",
+        ethAddress: user?.ethAddress || "",
+        usdtEthAddress: user?.usdtEthAddress || "",
+        usdtBscAddress: user?.usdtBscAddress || "",
+      };
+    }),
+
+    // Update wallet addresses
+    updateWallets: hostProcedure
+      .input(z.object({
+        btcAddress: z.string().optional(),
+        ethAddress: z.string().optional(),
+        usdtEthAddress: z.string().optional(),
+        usdtBscAddress: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const [updated] = await ctx.db
+          .update(users)
+          .set({
+            btcAddress: input.btcAddress || null,
+            ethAddress: input.ethAddress || null,
+            usdtEthAddress: input.usdtEthAddress || null,
+            usdtBscAddress: input.usdtBscAddress || null,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.email, ctx.session.user.email))
+          .returning();
+
+        return {
+          btcAddress: updated.btcAddress || "",
+          ethAddress: updated.ethAddress || "",
+          usdtEthAddress: updated.usdtEthAddress || "",
+          usdtBscAddress: updated.usdtBscAddress || "",
+        };
       }),
   }),
 });

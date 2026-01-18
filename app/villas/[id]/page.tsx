@@ -1,4 +1,4 @@
-import { db, villas, bookings, blockedDates } from "@/lib/db";
+import { db, villas, bookings, blockedDates, users } from "@/lib/db";
 import { eq, and, or, gte } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import Image from "next/image";
@@ -27,15 +27,32 @@ export default async function VillaDetailPage({ params, searchParams }: PageProp
   const { id } = await params;
   const { checkIn, checkOut, guests } = await searchParams;
 
-  const [villa] = await db
-    .select()
+  const [villaData] = await db
+    .select({
+      villa: villas,
+      owner: {
+        btcAddress: users.btcAddress,
+        ethAddress: users.ethAddress,
+        usdtEthAddress: users.usdtEthAddress,
+        usdtBscAddress: users.usdtBscAddress,
+      },
+    })
     .from(villas)
+    .leftJoin(users, eq(villas.ownerEmail, users.email))
     .where(eq(villas.id, id))
     .limit(1);
 
-  if (!villa || !villa.isActive) {
+  if (!villaData || !villaData.villa.isActive) {
     notFound();
   }
+
+  const villa = villaData.villa;
+  const ownerWallets = {
+    btcAddress: villaData.owner?.btcAddress || null,
+    ethAddress: villaData.owner?.ethAddress || null,
+    usdtEthAddress: villaData.owner?.usdtEthAddress || null,
+    usdtBscAddress: villaData.owner?.usdtBscAddress || null,
+  };
 
   const existingBookings = await db
     .select({
@@ -204,6 +221,7 @@ export default async function VillaDetailPage({ params, searchParams }: PageProp
                   maxGuests={villa.maxGuests || 1}
                   bookedDates={bookedDates}
                   blockedDates={blockedDateRanges}
+                  ownerWallets={ownerWallets}
                   initialCheckIn={checkIn}
                   initialCheckOut={checkOut}
                   initialGuests={guests ? parseInt(guests, 10) : undefined}

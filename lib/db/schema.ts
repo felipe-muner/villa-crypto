@@ -34,6 +34,11 @@ export const users = pgTable("users", {
   avatar: text("avatar"),
   role: userRoleEnum("role").default("guest").notNull(),
   isHost: boolean("is_host").default(false).notNull(),
+  // Host wallet addresses for receiving payments
+  btcAddress: text("btc_address"),
+  ethAddress: text("eth_address"),
+  usdtEthAddress: text("usdt_eth_address"),
+  usdtBscAddress: text("usdt_bsc_address"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

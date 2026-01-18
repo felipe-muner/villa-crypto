@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   ArrowLeftRight,
+  Settings,
 } from "lucide-react";
 
 interface HostSidebarProps {
@@ -39,6 +40,11 @@ const navigation = [
     name: "Bookings",
     href: "/host/bookings",
     icon: Calendar,
+  },
+  {
+    name: "Settings",
+    href: "/host/settings",
+    icon: Settings,
   },
 ];
 

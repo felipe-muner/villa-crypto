@@ -36,12 +36,20 @@ interface BlockedDateRange {
   endDate: string;
 }
 
+interface OwnerWallets {
+  btcAddress: string | null;
+  ethAddress: string | null;
+  usdtEthAddress: string | null;
+  usdtBscAddress: string | null;
+}
+
 interface BookingFormProps {
   villaId: string;
   pricePerNight: number;
   maxGuests: number;
   bookedDates: BookedDate[];
   blockedDates?: BlockedDateRange[];
+  ownerWallets: OwnerWallets;
   initialCheckIn?: string;
   initialCheckOut?: string;
   initialGuests?: number;
@@ -68,12 +76,29 @@ export function BookingForm({
   maxGuests,
   bookedDates,
   blockedDates = [],
+  ownerWallets,
   initialCheckIn,
   initialCheckOut,
   initialGuests,
 }: BookingFormProps) {
   const { data: session, status } = useSession();
   const router = useRouter();
+
+  // Filter crypto options based on configured wallets
+  const availableCryptoOptions = cryptoOptions.filter((option) => {
+    switch (option.value) {
+      case "btc":
+        return !!ownerWallets.btcAddress;
+      case "eth":
+        return !!ownerWallets.ethAddress;
+      case "usdt_eth":
+        return !!ownerWallets.usdtEthAddress;
+      case "usdt_bsc":
+        return !!ownerWallets.usdtBscAddress;
+      default:
+        return false;
+    }
+  });
 
   const [checkIn, setCheckIn] = useState<Date | undefined>(
     initialCheckIn ? new Date(initialCheckIn) : undefined
@@ -82,7 +107,9 @@ export function BookingForm({
     initialCheckOut ? new Date(initialCheckOut) : undefined
   );
   const [guests, setGuests] = useState((initialGuests || 1).toString());
-  const [cryptoCurrency, setCryptoCurrency] = useState<"btc" | "eth" | "usdt_eth" | "usdt_bsc">("btc");
+  const [cryptoCurrency, setCryptoCurrency] = useState<"btc" | "eth" | "usdt_eth" | "usdt_bsc">(
+    availableCryptoOptions.length > 0 ? availableCryptoOptions[0].value : "btc"
+  );
   const [conversions, setConversions] = useState<Record<string, PriceConversion> | null>(null);
 
   const createBooking = trpc.booking.create.useMutation({
@@ -246,27 +273,35 @@ export function BookingForm({
         </Select>
       </div>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Pay with</label>
-        <div className="grid grid-cols-2 gap-2">
-          {cryptoOptions.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setCryptoCurrency(option.value)}
-              className={cn(
-                "p-3 rounded-lg border-2 text-center transition-all",
-                cryptoCurrency === option.value
-                  ? "border-primary bg-primary/10"
-                  : "border-border hover:border-primary/50"
-              )}
-            >
-              <span className="text-xl">{option.icon}</span>
-              <p className="text-xs text-muted-foreground mt-1">{option.label}</p>
-            </button>
-          ))}
+      {availableCryptoOptions.length > 0 ? (
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Pay with</label>
+          <div className="grid grid-cols-2 gap-2">
+            {availableCryptoOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setCryptoCurrency(option.value)}
+                className={cn(
+                  "p-3 rounded-lg border-2 text-center transition-all",
+                  cryptoCurrency === option.value
+                    ? "border-primary bg-primary/10"
+                    : "border-border hover:border-primary/50"
+                )}
+              >
+                <span className="text-xl">{option.icon}</span>
+                <p className="text-xs text-muted-foreground mt-1">{option.label}</p>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="p-4 bg-muted rounded-lg text-center">
+          <p className="text-sm text-muted-foreground">
+            No payment methods available. Host has not configured wallet addresses.
+          </p>
+        </div>
+      )}
 
       {nights > 0 && (
         <>
@@ -295,7 +330,7 @@ export function BookingForm({
 
       <Button
         onClick={handleSubmit}
-        disabled={createBooking.isPending || nights <= 0}
+        disabled={createBooking.isPending || nights <= 0 || availableCryptoOptions.length === 0}
         className="w-full"
         size="lg"
       >
@@ -306,6 +341,8 @@ export function BookingForm({
           </>
         ) : status !== "authenticated" ? (
           "Sign in to book"
+        ) : availableCryptoOptions.length === 0 ? (
+          "No payment methods"
         ) : (
           "Request Booking"
         )}

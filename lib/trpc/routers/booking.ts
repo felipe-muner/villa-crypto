@@ -4,7 +4,7 @@ import { eq, and, or, gte, lte, desc, ne, isNotNull } from "drizzle-orm";
 import { differenceInDays } from "date-fns";
 import { router, protectedProcedure } from "../init";
 import { createBookingSchema, updateBookingSchema, bookingQuerySchema } from "../schemas";
-import { bookings, villas, users, walletConfig } from "@/lib/db/schema";
+import { bookings, villas, users } from "@/lib/db/schema";
 import { convertUsdToCrypto, getCryptoDecimals } from "@/lib/crypto/prices";
 import { sendBookingConfirmationEmail, sendPaymentReceivedEmail, sendBookingConfirmedEmail } from "@/lib/email";
 import { verifyTransaction as verifyTransactionUsdt, scanForIncomingTransfers, findMatchingPayment } from "@/lib/blockchain/payment-monitor";
@@ -82,24 +82,35 @@ export const bookingRouter = router({
         });
       }
 
-      // Get wallet config for payment info
-      const [wallet] = await ctx.db.select().from(walletConfig).limit(1);
-
+      // Get owner wallet addresses for payment info
       let walletAddress = "";
-      if (wallet) {
-        switch (result.booking.cryptoCurrency) {
-          case "btc":
-            walletAddress = wallet.btcAddress || "";
-            break;
-          case "eth":
-            walletAddress = wallet.ethAddress || "";
-            break;
-          case "usdt_eth":
-            walletAddress = wallet.usdtEthAddress || "";
-            break;
-          case "usdt_bsc":
-            walletAddress = wallet.usdtBscAddress || "";
-            break;
+      if (result.villa?.ownerEmail) {
+        const [owner] = await ctx.db
+          .select({
+            btcAddress: users.btcAddress,
+            ethAddress: users.ethAddress,
+            usdtEthAddress: users.usdtEthAddress,
+            usdtBscAddress: users.usdtBscAddress,
+          })
+          .from(users)
+          .where(eq(users.email, result.villa.ownerEmail))
+          .limit(1);
+
+        if (owner) {
+          switch (result.booking.cryptoCurrency) {
+            case "btc":
+              walletAddress = owner.btcAddress || "";
+              break;
+            case "eth":
+              walletAddress = owner.ethAddress || "";
+              break;
+            case "usdt_eth":
+              walletAddress = owner.usdtEthAddress || "";
+              break;
+            case "usdt_bsc":
+              walletAddress = owner.usdtBscAddress || "";
+              break;
+          }
         }
       }
 
@@ -193,23 +204,35 @@ export const bookingRouter = router({
         })
         .returning();
 
-      // Get wallet address for email
-      const [wallet] = await ctx.db.select().from(walletConfig).limit(1);
+      // Get owner wallet address for email
       let walletAddress = "";
-      if (wallet) {
-        switch (input.cryptoCurrency as CryptoCurrency) {
-          case "btc":
-            walletAddress = wallet.btcAddress || "";
-            break;
-          case "eth":
-            walletAddress = wallet.ethAddress || "";
-            break;
-          case "usdt_eth":
-            walletAddress = wallet.usdtEthAddress || "";
-            break;
-          case "usdt_bsc":
-            walletAddress = wallet.usdtBscAddress || "";
-            break;
+      if (villa.ownerEmail) {
+        const [owner] = await ctx.db
+          .select({
+            btcAddress: users.btcAddress,
+            ethAddress: users.ethAddress,
+            usdtEthAddress: users.usdtEthAddress,
+            usdtBscAddress: users.usdtBscAddress,
+          })
+          .from(users)
+          .where(eq(users.email, villa.ownerEmail))
+          .limit(1);
+
+        if (owner) {
+          switch (input.cryptoCurrency as CryptoCurrency) {
+            case "btc":
+              walletAddress = owner.btcAddress || "";
+              break;
+            case "eth":
+              walletAddress = owner.ethAddress || "";
+              break;
+            case "usdt_eth":
+              walletAddress = owner.usdtEthAddress || "";
+              break;
+            case "usdt_bsc":
+              walletAddress = owner.usdtBscAddress || "";
+              break;
+          }
         }
       }
 
@@ -278,16 +301,25 @@ export const bookingRouter = router({
         if (input.data.txHash && existing.status === "pending") {
           // For USDT, verify the transaction on-chain
           if (existing.cryptoCurrency === "usdt_eth" || existing.cryptoCurrency === "usdt_bsc") {
-            const [wallet] = await ctx.db.select().from(walletConfig).limit(1);
-            if (!wallet) {
+            // Get owner wallet address
+            if (!villa?.ownerEmail) {
               throw new TRPCError({
                 code: "INTERNAL_SERVER_ERROR",
-                message: "Wallet not configured",
+                message: "Villa owner not found",
               });
             }
 
+            const [owner] = await ctx.db
+              .select({
+                usdtEthAddress: users.usdtEthAddress,
+                usdtBscAddress: users.usdtBscAddress,
+              })
+              .from(users)
+              .where(eq(users.email, villa.ownerEmail))
+              .limit(1);
+
             const network = existing.cryptoCurrency === "usdt_eth" ? "eth" : "bsc";
-            const walletAddress = network === "eth" ? wallet.usdtEthAddress : wallet.usdtBscAddress;
+            const walletAddress = network === "eth" ? owner?.usdtEthAddress : owner?.usdtBscAddress;
 
             if (!walletAddress) {
               throw new TRPCError({
@@ -453,31 +485,49 @@ export const bookingRouter = router({
         });
       }
 
-      // Get wallet config
-      const [wallet] = await ctx.db.select().from(walletConfig).limit(1);
+      // Get villa to find owner
+      const [villa] = await ctx.db
+        .select()
+        .from(villas)
+        .where(eq(villas.id, booking.villaId))
+        .limit(1);
 
-      if (!wallet) {
+      if (!villa?.ownerEmail) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Wallet configuration not found",
+          message: "Villa owner not found",
         });
       }
 
+      // Get owner wallet addresses
+      const [owner] = await ctx.db
+        .select({
+          btcAddress: users.btcAddress,
+          ethAddress: users.ethAddress,
+          usdtEthAddress: users.usdtEthAddress,
+          usdtBscAddress: users.usdtBscAddress,
+        })
+        .from(users)
+        .where(eq(users.email, villa.ownerEmail))
+        .limit(1);
+
       // Get the appropriate wallet address
       let walletAddress = "";
-      switch (booking.cryptoCurrency) {
-        case "btc":
-          walletAddress = wallet.btcAddress || "";
-          break;
-        case "eth":
-          walletAddress = wallet.ethAddress || "";
-          break;
-        case "usdt_eth":
-          walletAddress = wallet.usdtEthAddress || "";
-          break;
-        case "usdt_bsc":
-          walletAddress = wallet.usdtBscAddress || "";
-          break;
+      if (owner) {
+        switch (booking.cryptoCurrency) {
+          case "btc":
+            walletAddress = owner.btcAddress || "";
+            break;
+          case "eth":
+            walletAddress = owner.ethAddress || "";
+            break;
+          case "usdt_eth":
+            walletAddress = owner.usdtEthAddress || "";
+            break;
+          case "usdt_bsc":
+            walletAddress = owner.usdtBscAddress || "";
+            break;
+        }
       }
 
       if (!walletAddress) {
@@ -583,19 +633,34 @@ export const bookingRouter = router({
         };
       }
 
-      // Get wallet configuration
-      const [wallet] = await ctx.db.select().from(walletConfig).limit(1);
-      if (!wallet) {
+      // Get villa to find owner
+      const [villa] = await ctx.db
+        .select()
+        .from(villas)
+        .where(eq(villas.id, booking.villaId))
+        .limit(1);
+
+      if (!villa?.ownerEmail) {
         return {
           status: booking.status,
           paid: false,
-          error: "Wallet not configured",
+          error: "Villa owner not found",
         };
       }
 
+      // Get owner wallet addresses
+      const [owner] = await ctx.db
+        .select({
+          usdtEthAddress: users.usdtEthAddress,
+          usdtBscAddress: users.usdtBscAddress,
+        })
+        .from(users)
+        .where(eq(users.email, villa.ownerEmail))
+        .limit(1);
+
       const network = booking.cryptoCurrency === "usdt_eth" ? "eth" : "bsc";
       const walletAddress =
-        network === "eth" ? wallet.usdtEthAddress : wallet.usdtBscAddress;
+        network === "eth" ? owner?.usdtEthAddress : owner?.usdtBscAddress;
 
       if (!walletAddress) {
         return {
