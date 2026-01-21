@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import type { Villa } from "@/lib/types/database";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, ImagePlus, X } from "lucide-react";
+import { FileUpload } from "@/components/ui/file-upload";
+import { Loader2 } from "lucide-react";
 import { showToast } from "@/lib/toast";
 import { trpc } from "@/lib/trpc/client";
 
@@ -21,8 +21,6 @@ interface VillaFormProps {
 
 export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormProps) {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isUploading, setIsUploading] = useState(false);
 
   const [formData, setFormData] = useState({
     name: villa?.name || "",
@@ -61,45 +59,6 @@ export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormPr
   });
 
   const isSubmitting = createVilla.isPending || updateVilla.isPending;
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setIsUploading(true);
-
-    try {
-      for (const file of Array.from(files)) {
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to upload image");
-        }
-
-        const data = await response.json();
-        setImages((prev) => [...prev, data.url]);
-      }
-      showToast.success("Uploaded", "Image uploaded successfully");
-    } catch (err) {
-      showToast.error(err);
-      console.error("Upload error:", err);
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
-  };
-
-  const removeImage = (index: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== index));
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -246,57 +205,10 @@ export function VillaForm({ villa, redirectPath = "/admin/villas" }: VillaFormPr
           <CardTitle className="text-lg">Images</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
-            {images.map((url, index) => (
-              <div key={index} className="relative aspect-square">
-                <Image
-                  src={url}
-                  alt={`Villa image ${index + 1}`}
-                  fill
-                  className="object-cover rounded-lg"
-                />
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="icon"
-                  className="absolute top-2 right-2 h-6 w-6"
-                  onClick={() => removeImage(index)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-
-          <div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handleImageUpload}
-              className="hidden"
-              id="image-upload"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <ImagePlus className="mr-2 h-4 w-4" />
-                  Upload Images
-                </>
-              )}
-            </Button>
-          </div>
+          <FileUpload
+            images={images}
+            onChange={setImages}
+          />
         </CardContent>
       </Card>
 
